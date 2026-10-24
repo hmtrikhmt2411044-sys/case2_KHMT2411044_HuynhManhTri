@@ -5,7 +5,7 @@ import '../utils/constants.dart';
 import 'api_client.dart';
 
 class AuthService {
-  // 1. Đăng ký tài khoản bằng họ tên, email và mật khẩu
+  // 1. Đăng ký tài khoản
   static Future<Map<String, dynamic>> register({
     required String fullName,
     required String email,
@@ -20,6 +20,7 @@ class AuthService {
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 201 && data['success'] == true) {
+        // Lưu token và thông tin user
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(AppConstants.keyToken, data['data']['token']);
         await prefs.setString(
@@ -35,7 +36,7 @@ class AuthService {
     }
   }
 
-  // 2. Đăng nhập bằng email và mật khẩu
+  // 2. Đăng nhập
   static Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -63,7 +64,7 @@ class AuthService {
     }
   }
 
-  // 3. Đăng xuất khỏi hệ thống
+  // 3. Đăng xuất
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.keyToken);
@@ -84,6 +85,7 @@ class AuthService {
         }
       }
     } catch (e) {
+      // Fallback lấy từ local nếu offline
       return await getLocalUser();
     }
     return await getLocalUser();
@@ -112,6 +114,32 @@ class AuthService {
         return {'success': true, 'message': data['message'] ?? 'Cập nhật thành công', 'user': user};
       } else {
         return {'success': false, 'message': data['message'] ?? 'Cập nhật thất bại'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
+    }
+  }
+
+  // 6. Đổi mật khẩu
+  static Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await ApiClient.put(
+        '/auth/change-password',
+        body: {
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        },
+        requireAuth: true,
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {'success': true, 'message': data['message'] ?? 'Đổi mật khẩu thành công'};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Đổi mật khẩu thất bại'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Lỗi kết nối: $e'};

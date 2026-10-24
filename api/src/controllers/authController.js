@@ -8,11 +8,12 @@ const generateToken = (userId) => {
   return jwt.sign({ id: userId }, secret, { expiresIn });
 };
 
-// 1. Đăng ký tài khoản bằng họ tên, email và mật khẩu
+// 1. Đăng ký tài khoản
 exports.register = async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
 
+    // Validate dữ liệu đầu vào
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập họ và tên' });
     }
@@ -25,6 +26,7 @@ exports.register = async (req, res) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    // Kiểm tra email trùng lặp
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({
@@ -33,15 +35,18 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Băm mật khẩu bằng bcrypt
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
+    // Tạo người dùng mới
     const newUser = await User.create({
       fullName: fullName.trim(),
       email: cleanEmail,
       passwordHash,
     });
 
+    // Tạo JWT token
     const token = generateToken(newUser._id);
 
     return res.status(201).json({
@@ -75,6 +80,7 @@ exports.login = async (req, res) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    // Tìm người dùng theo email
     const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(401).json({
@@ -83,6 +89,7 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Kiểm tra mật khẩu
     const isMatch = await user.isValidPassword(password);
     if (!isMatch) {
       return res.status(401).json({
@@ -91,6 +98,7 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Tạo token
     const token = generateToken(user._id);
 
     return res.status(200).json({
@@ -110,7 +118,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// 3. Xem thông tin cá nhân (Profile)
+// 3. Lấy thông tin cá nhân (Profile)
 exports.getProfile = async (req, res) => {
   try {
     return res.status(200).json({
@@ -149,6 +157,52 @@ exports.updateProfile = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi cập nhật thông tin: ' + error.message,
+    });
+  }
+};
+
+// 5. Đổi mật khẩu
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.user._id);
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp mật khẩu hiện tại và mật khẩu mới',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu mới phải có ít nhất 6 ký tự',
+      });
+    }
+
+    // Kiểm tra mật khẩu hiện tại
+    const isMatch = await user.isValidPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu hiện tại không đúng',
+      });
+    }
+
+    // Mã hóa mật khẩu mới
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đổi mật khẩu thành công',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi đổi mật khẩu: ' + error.message,
     });
   }
 };
