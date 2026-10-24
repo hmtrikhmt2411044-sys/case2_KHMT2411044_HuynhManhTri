@@ -20,7 +20,6 @@ class AuthService {
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 201 && data['success'] == true) {
-        // Lưu token và thông tin user
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(AppConstants.keyToken, data['data']['token']);
         await prefs.setString(
@@ -62,6 +61,13 @@ class AuthService {
     } catch (e) {
       return {'success': false, 'message': 'Không thể kết nối đến máy chủ: $e'};
     }
+  }
+
+  // 3. Đăng xuất khỏi hệ thống
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.keyToken);
+    await prefs.remove(AppConstants.keyUser);
   }
 
   // Tiện ích kiểm tra đăng nhập
