@@ -13,7 +13,6 @@ exports.register = async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
 
-    // Validate dữ liệu đầu vào
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập họ và tên' });
     }
@@ -26,7 +25,6 @@ exports.register = async (req, res) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Kiểm tra email trùng lặp
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({
@@ -35,18 +33,15 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Băm mật khẩu bằng bcrypt
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Tạo người dùng mới
     const newUser = await User.create({
       fullName: fullName.trim(),
       email: cleanEmail,
       passwordHash,
     });
 
-    // Tạo JWT token
     const token = generateToken(newUser._id);
 
     return res.status(201).json({
@@ -80,7 +75,6 @@ exports.login = async (req, res) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Tìm người dùng theo email
     const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(401).json({
@@ -89,7 +83,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Kiểm tra mật khẩu
     const isMatch = await user.isValidPassword(password);
     if (!isMatch) {
       return res.status(401).json({
@@ -98,7 +91,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Tạo token
     const token = generateToken(user._id);
 
     return res.status(200).json({
@@ -114,6 +106,49 @@ exports.login = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi server khi đăng nhập: ' + error.message,
+    });
+  }
+};
+
+// 3. Xem thông tin cá nhân (Profile)
+exports.getProfile = async (req, res) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      data: req.user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy thông tin cá nhân: ' + error.message,
+    });
+  }
+};
+
+// 4. Cập nhật thông tin cá nhân
+exports.updateProfile = async (req, res) => {
+  try {
+    const { fullName, avatarUrl } = req.body;
+    const userId = req.user._id;
+
+    const updates = {};
+    if (fullName && fullName.trim()) updates.fullName = fullName.trim();
+    if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật thông tin cá nhân thành công',
+      data: updatedUser,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật thông tin: ' + error.message,
     });
   }
 };

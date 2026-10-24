@@ -70,6 +70,54 @@ class AuthService {
     await prefs.remove(AppConstants.keyUser);
   }
 
+  // 4. Lấy thông tin người dùng từ máy chủ (Profile)
+  static Future<User?> getProfile() async {
+    try {
+      final response = await ApiClient.get('/auth/me', requireAuth: true);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final user = User.fromJson(data['data']);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(AppConstants.keyUser, jsonEncode(user.toJson()));
+          return user;
+        }
+      }
+    } catch (e) {
+      return await getLocalUser();
+    }
+    return await getLocalUser();
+  }
+
+  // 5. Cập nhật thông tin cá nhân
+  static Future<Map<String, dynamic>> updateProfile({
+    required String fullName,
+    String? avatarUrl,
+  }) async {
+    try {
+      final body = <String, dynamic>{'fullName': fullName};
+      if (avatarUrl != null) body['avatarUrl'] = avatarUrl;
+
+      final response = await ApiClient.put(
+        '/auth/me',
+        body: body,
+        requireAuth: true,
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        final user = User.fromJson(data['data']);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(AppConstants.keyUser, jsonEncode(user.toJson()));
+        return {'success': true, 'message': data['message'] ?? 'Cập nhật thành công', 'user': user};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Cập nhật thất bại'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Lỗi kết nối: $e'};
+    }
+  }
+
   // Tiện ích kiểm tra đăng nhập
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
