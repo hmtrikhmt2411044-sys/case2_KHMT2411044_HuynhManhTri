@@ -1,0 +1,23 @@
+﻿# Dependencies
+node_modules/
+api/node_modules/
+.env
+api/.env
+
+# Flutter / Dart
+TaskManager/.dart_tool/
+TaskManager/.flutter-plugins
+TaskManager/.flutter-plugins-dependencies
+TaskManager/.packages
+TaskManager/build/
+TaskManager/.pub-cache/
+TaskManager/.pub/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+Thumbs.db
