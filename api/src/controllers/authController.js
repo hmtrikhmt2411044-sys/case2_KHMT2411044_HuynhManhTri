@@ -65,3 +65,55 @@ exports.register = async (req, res) => {
     });
   }
 };
+
+// 2. Đăng nhập bằng email và mật khẩu
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập đầy đủ email và mật khẩu',
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Tìm người dùng theo email
+    const user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Email hoặc mật khẩu không chính xác',
+      });
+    }
+
+    // Kiểm tra mật khẩu
+    const isMatch = await user.isValidPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Email hoặc mật khẩu không chính xác',
+      });
+    }
+
+    // Tạo token
+    const token = generateToken(user._id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đăng nhập thành công',
+      data: {
+        user,
+        token,
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi đăng nhập:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi đăng nhập: ' + error.message,
+    });
+  }
+};
