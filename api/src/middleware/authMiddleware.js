@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const userStore = require('../services/userStore');
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -15,7 +15,7 @@ const authMiddleware = async (req, res, next) => {
     const secret = process.env.JWT_SECRET || 'default_jwt_secret_case2_taskmanager_KHMT2411044';
 
     const decoded = jwt.verify(token, secret);
-    const user = await User.findById(decoded.id);
+    const user = await userStore.findById(decoded.id);
 
     if (!user) {
       return res.status(401).json({

@@ -1,11 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const userStore = require('../services/userStore');
 
 const generateToken = (userId) => {
   const secret = process.env.JWT_SECRET || 'default_jwt_secret_case2_taskmanager_KHMT2411044';
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  return jwt.sign({ id: userId }, secret, { expiresIn });
+  return jwt.sign({ id: String(userId) }, secret, { expiresIn });
 };
 
 // 1. Đăng ký tài khoản
@@ -27,7 +27,7 @@ exports.register = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
 
     // Kiểm tra email trùng lặp
-    const existingUser = await User.findOne({ email: cleanEmail });
+    const existingUser = await userStore.findByEmail(cleanEmail);
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -40,7 +40,7 @@ exports.register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
 
     // Tạo người dùng mới
-    const newUser = await User.create({
+    const newUser = await userStore.createUser({
       fullName: fullName.trim(),
       email: cleanEmail,
       passwordHash,
@@ -53,7 +53,7 @@ exports.register = async (req, res) => {
       success: true,
       message: 'Đăng ký tài khoản thành công',
       data: {
-        user: newUser,
+        user: newUser.toJSON ? newUser.toJSON() : newUser,
         token,
       },
     });
@@ -81,7 +81,7 @@ exports.login = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
 
     // Tìm người dùng theo email
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await userStore.findByEmail(cleanEmail);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -105,7 +105,7 @@ exports.login = async (req, res) => {
       success: true,
       message: 'Đăng nhập thành công',
       data: {
-        user,
+        user: user.toJSON ? user.toJSON() : user,
         token,
       },
     });
@@ -121,9 +121,10 @@ exports.login = async (req, res) => {
 // 3. Lấy thông tin cá nhân (Profile)
 exports.getProfile = async (req, res) => {
   try {
+    const user = req.user;
     return res.status(200).json({
       success: true,
-      data: req.user,
+      data: user.toJSON ? user.toJSON() : user,
     });
   } catch (error) {
     return res.status(500).json({
@@ -143,15 +144,12 @@ exports.updateProfile = async (req, res) => {
     if (fullName && fullName.trim()) updates.fullName = fullName.trim();
     if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
 
-    const updatedUser = await User.findByIdAndUpdate(userId, updates, {
-      new: true,
-      runValidators: true,
-    });
+    const updatedUser = await userStore.updateProfile(userId, updates);
 
     return res.status(200).json({
       success: true,
       message: 'Cập nhật thông tin cá nhân thành công',
-      data: updatedUser,
+      data: updatedUser.toJSON ? updatedUser.toJSON() : updatedUser,
     });
   } catch (error) {
     return res.status(500).json({
@@ -165,7 +163,8 @@ exports.updateProfile = async (req, res) => {
 exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user._id);
+    const userId = req.user._id;
+    const user = await userStore.findById(userId);
 
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
@@ -192,8 +191,8 @@ exports.changePassword = async (req, res) => {
 
     // Mã hóa mật khẩu mới
     const salt = await bcrypt.genSalt(10);
-    user.passwordHash = await bcrypt.hash(newPassword, salt);
-    await user.save();
+    const newPasswordHash = await bcrypt.hash(newPassword, salt);
+    await userStore.updatePassword(userId, newPasswordHash);
 
     return res.status(200).json({
       success: true,
