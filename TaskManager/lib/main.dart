@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/register_screen.dart';
 import 'screens/tasks/task_list_screen.dart';
 import 'services/auth_service.dart';
 
@@ -18,14 +19,12 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueAccent,
+          seedColor: const Color(0xFF2563EB),
           brightness: Brightness.light,
         ),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         useMaterial3: true,
-        inputDecorationTheme: const InputDecorationTheme(
-          filled: true,
-          fillColor: Color(0xFFF8FAFC),
-        ),
+        fontFamily: 'sans-serif',
       ),
       home: const AuthCheckWrapper(),
     );
@@ -62,8 +61,12 @@ class _AuthCheckWrapperState extends State<AuthCheckWrapper> {
   Widget build(BuildContext context) {
     if (_isChecking) {
       return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
         body: Center(
-          child: CircularProgressIndicator(),
+          child: CircularProgressIndicator(
+            color: Color(0xFF2563EB),
+            strokeWidth: 2.5,
+          ),
         ),
       );
     }
