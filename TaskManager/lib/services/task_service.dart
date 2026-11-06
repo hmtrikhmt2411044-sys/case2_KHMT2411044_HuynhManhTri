@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'api_client.dart';
 import '../models/task.dart';
+import '../models/task_share.dart';
 
 class TaskService {
-  // 1. Lấy danh sách công việc theo bộ lọc
+  // Lấy danh sách công việc theo bộ lọc
   static Future<List<TaskModel>> getTasks({
-    String type = 'all', // 'all', 'my_tasks'
+    String type = 'all', // 'all', 'my_tasks', 'assigned', 'shared'
     String? status,
     String? priority,
     String? search,
@@ -29,7 +30,7 @@ class TaskService {
     return [];
   }
 
-  // 2. Lấy chi tiết công việc
+  // Lấy chi tiết công việc kèm quyền hạn
   static Future<Map<String, dynamic>?> getTaskDetail(String id) async {
     final res = await ApiClient.get('/tasks/$id', requireAuth: true);
     if (res.statusCode == 200) {
@@ -37,14 +38,14 @@ class TaskService {
       if (body['success'] == true && body['data'] != null) {
         return {
           'task': TaskModel.fromJson(body['data']),
-          'permission': body['permission'] ?? 'owner',
+          'permission': body['permission'] ?? 'viewer',
         };
       }
     }
     return null;
   }
 
-  // 3. Tạo công việc mới
+  // Tạo công việc mới
   static Future<TaskModel?> createTask({
     required String title,
     String? description,
@@ -52,6 +53,8 @@ class TaskService {
     String? status,
     DateTime? startDate,
     DateTime? dueDate,
+    List<String>? assigneeIds,
+    String? primaryAssigneeId,
   }) async {
     final payload = <String, dynamic>{
       'title': title,
@@ -60,6 +63,8 @@ class TaskService {
       if (status != null) 'status': status,
       if (startDate != null) 'startDate': startDate.toIso8601String(),
       if (dueDate != null) 'dueDate': dueDate.toIso8601String(),
+      if (assigneeIds != null) 'assigneeIds': assigneeIds,
+      if (primaryAssigneeId != null) 'primaryAssigneeId': primaryAssigneeId,
     };
 
     final res = await ApiClient.post('/tasks', body: payload, requireAuth: true);
@@ -72,7 +77,7 @@ class TaskService {
     return null;
   }
 
-  // 4. Cập nhật thông tin công việc
+  // Cập nhật thông tin công việc
   static Future<TaskModel?> updateTask(String id, Map<String, dynamic> updates) async {
     final res = await ApiClient.put('/tasks/$id', body: updates, requireAuth: true);
     if (res.statusCode == 200) {
@@ -84,7 +89,7 @@ class TaskService {
     return null;
   }
 
-  // 5. Cập nhật trạng thái công việc
+  // Cập nhật trạng thái công việc
   static Future<bool> updateStatus(String id, String status) async {
     final res = await ApiClient.patch('/tasks/$id/status', body: {'status': status}, requireAuth: true);
     if (res.statusCode == 200) {
@@ -94,7 +99,7 @@ class TaskService {
     return false;
   }
 
-  // 6. Xóa công việc
+  // Xóa công việc
   static Future<bool> deleteTask(String id) async {
     final res = await ApiClient.delete('/tasks/$id', requireAuth: true);
     if (res.statusCode == 200) {
@@ -102,5 +107,61 @@ class TaskService {
       return body['success'] == true;
     }
     return false;
+  }
+
+  // Phân công công việc (Assign)
+  static Future<TaskModel?> assignTask(
+    String id, {
+    required List<String> assigneeIds,
+    String? primaryAssigneeId,
+  }) async {
+    final payload = {
+      'assigneeIds': assigneeIds,
+      'primaryAssigneeId': primaryAssigneeId,
+    };
+    final res = await ApiClient.post('/tasks/$id/assign', body: payload, requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      if (body['success'] == true && body['data'] != null) {
+        return TaskModel.fromJson(body['data']);
+      }
+    }
+    return null;
+  }
+
+  // Chia sẻ công việc
+  static Future<bool> shareTask(String id, {required String targetUserId, required String permission}) async {
+    final payload = {
+      'targetUserId': targetUserId,
+      'permission': permission,
+    };
+    final res = await ApiClient.post('/tasks/$id/share', body: payload, requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      return body['success'] == true;
+    }
+    return false;
+  }
+
+  // Thu hồi chia sẻ
+  static Future<bool> revokeShare(String id, String targetUserId) async {
+    final res = await ApiClient.delete('/tasks/$id/share/$targetUserId', requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      return body['success'] == true;
+    }
+    return false;
+  }
+
+  // Lấy danh sách chia sẻ của công việc
+  static Future<List<TaskShareModel>> getTaskShares(String id) async {
+    final res = await ApiClient.get('/tasks/$id/shares', requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      if (body['success'] == true && body['data'] is List) {
+        return (body['data'] as List).map((s) => TaskShareModel.fromJson(s)).toList();
+      }
+    }
+    return [];
   }
 }
