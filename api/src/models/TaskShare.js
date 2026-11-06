@@ -16,19 +16,20 @@ const taskShareSchema = new mongoose.Schema(
       type: String,
       enum: ['viewer', 'editor'],
       default: 'viewer',
+      required: [true, 'Quyền chia sẻ là bắt buộc (viewer hoặc editor)'],
     },
     sharedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'Người thực hiện chia sẻ là bắt buộc'],
+      required: [true, 'Người cấp quyền là bắt buộc'],
     },
   },
   {
-    timestamps: true,
+    timestamps: { createdAt: true, updatedAt: false },
   }
 );
 
-// Tránh tạo trùng lặp bản ghi chia sẻ cho cùng 1 cặp (taskId, userId)
+// Tránh trùng lặp chia sẻ cho cùng 1 người trên 1 công việc
 taskShareSchema.index({ taskId: 1, userId: 1 }, { unique: true });
 
 const TaskShare = mongoose.model('TaskShare', taskShareSchema);

@@ -70,7 +70,7 @@ const populateTask = async (task) => {
 };
 
 module.exports = {
-  // 1. Lấy danh sách công việc
+  // Lấy danh sách công việc
   async getTasks({ userId, type = 'all', status, priority, search, sortBy = 'createdAt' }) {
     const userIdStr = String(userId);
     if (isMongooseConnected()) {
@@ -84,6 +84,7 @@ module.exports = {
         const taskIds = shares.map((s) => s.taskId);
         filter._id = { $in: taskIds };
       } else {
+        // 'all': việc tôi tạo, hoặc được giao, hoặc được chia sẻ
         const shares = await TaskShare.find({ userId }).select('taskId');
         const sharedIds = shares.map((s) => s.taskId);
         filter.$or = [
@@ -146,7 +147,7 @@ module.exports = {
     return populatedList;
   },
 
-  // 2. Lấy chi tiết công việc
+  // Lấy chi tiết công việc
   async getTaskById(taskId) {
     const idStr = String(taskId);
     if (isMongooseConnected()) {
@@ -161,7 +162,7 @@ module.exports = {
     return await populateTask(found);
   },
 
-  // 3. Tạo công việc mới
+  // Tạo công việc mới
   async createTask({ title, description, createdBy, assigneeIds = [], primaryAssigneeId = null, startDate, dueDate, priority, status }) {
     if (isMongooseConnected()) {
       const newTask = await Task.create({
@@ -197,7 +198,7 @@ module.exports = {
     return await populateTask(newTask);
   },
 
-  // 4. Cập nhật công việc
+  // Cập nhật công việc
   async updateTask(taskId, updates) {
     const idStr = String(taskId);
     if (isMongooseConnected()) {
@@ -212,12 +213,12 @@ module.exports = {
     return await populateTask(tasks[idx]);
   },
 
-  // 5. Cập nhật trạng thái công việc
+  // Cập nhật trạng thái công việc
   async updateStatus(taskId, status) {
     return await this.updateTask(taskId, { status });
   },
 
-  // 6. Xóa công việc
+  // Xóa công việc
   async deleteTask(taskId) {
     const idStr = String(taskId);
     if (isMongooseConnected()) {
@@ -235,7 +236,7 @@ module.exports = {
     return true;
   },
 
-  // 7. Giao việc cho một hoặc nhiều người & chỉ định người phụ trách chính
+  // Giao việc
   async assignTask(taskId, { assigneeIds = [], primaryAssigneeId = null }) {
     const updates = {
       assigneeIds: assigneeIds.map(String),
@@ -244,7 +245,7 @@ module.exports = {
     return await this.updateTask(taskId, updates);
   },
 
-  // 8. Chia sẻ công việc
+  // Chia sẻ công việc
   async shareTask(taskId, { userId, permission = 'viewer', sharedBy }) {
     const taskIdStr = String(taskId);
     const userIdStr = String(userId);
@@ -282,7 +283,7 @@ module.exports = {
     };
   },
 
-  // 9. Thu hồi quyền chia sẻ
+  // Thu hồi quyền chia sẻ
   async revokeShare(taskId, userId) {
     const taskIdStr = String(taskId);
     const userIdStr = String(userId);
@@ -296,7 +297,7 @@ module.exports = {
     return true;
   },
 
-  // 10. Lấy danh sách chia sẻ của 1 công việc
+  // Lấy danh sách chia sẻ của 1 công việc
   async getTaskShares(taskId) {
     const taskIdStr = String(taskId);
     if (isMongooseConnected()) {
@@ -318,7 +319,8 @@ module.exports = {
     return populated;
   },
 
-  // 11. Kiểm tra quyền của 1 user trên 1 task
+  // Kiểm tra quyền của 1 user trên 1 task
+  // Trả về: 'owner' | 'editor' | 'viewer' | 'assignee' | null
   async checkPermission(taskId, userId) {
     const taskIdStr = String(taskId);
     const userIdStr = String(userId);
@@ -329,10 +331,10 @@ module.exports = {
     const ownerId = String(task.createdBy?._id || task.createdBy);
     if (ownerId === userIdStr) return 'owner';
 
-    // Kiểm tra share (viewer / editor)
+    // Kiểm tra share
     if (isMongooseConnected()) {
       const share = await TaskShare.findOne({ taskId: taskIdStr, userId: userIdStr });
-      if (share) return share.permission;
+      if (share) return share.permission; // 'editor' hoặc 'viewer'
     } else {
       const shares = readShares();
       const s = shares.find((sh) => String(sh.taskId) === taskIdStr && String(sh.userId) === userIdStr);

@@ -43,6 +43,7 @@ exports.getTaskById = async (req, res) => {
       });
     }
 
+    // Kiểm tra quyền xem
     const permission = await taskStore.checkPermission(id, userId);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -114,6 +115,7 @@ exports.updateTask = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
+    // Kiểm tra quyền: Owner, Editor hoặc Admin
     const permission = await taskStore.checkPermission(id, userId);
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -199,6 +201,7 @@ exports.deleteTask = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
+    // Chỉ Owner hoặc Admin mới có quyền xóa
     const permission = await taskStore.checkPermission(id, userId);
     if (permission !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -233,6 +236,7 @@ exports.assignTask = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
+    // Chỉ Owner hoặc Editor mới có quyền giao việc
     const permission = await taskStore.checkPermission(id, userId);
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -287,6 +291,7 @@ exports.shareTask = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
+    // Chỉ Owner mới được chia sẻ hoặc sửa quyền
     const userPermission = await taskStore.checkPermission(id, userId);
     if (userPermission !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -295,6 +300,7 @@ exports.shareTask = async (req, res) => {
       });
     }
 
+    // Không thể tự chia sẻ cho chính mình
     if (String(task.createdBy?._id || task.createdBy) === String(targetUserId)) {
       return res.status(400).json({
         success: false,
@@ -332,6 +338,7 @@ exports.revokeShare = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
+    // Chỉ Owner hoặc Admin mới có quyền thu hồi chia sẻ
     const userPermission = await taskStore.checkPermission(id, userId);
     if (userPermission !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -365,6 +372,7 @@ exports.getTaskShares = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
+    // User phải có quyền truy cập công việc
     const permission = await taskStore.checkPermission(id, userId);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({
