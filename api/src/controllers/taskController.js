@@ -67,7 +67,7 @@ exports.getTaskById = async (req, res) => {
 // 3. Tạo công việc mới
 exports.createTask = async (req, res) => {
   try {
-    const { title, description, startDate, dueDate, priority, status } = req.body;
+    const { title, description, startDate, dueDate, priority, status, assigneeIds, primaryAssigneeId } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -80,6 +80,8 @@ exports.createTask = async (req, res) => {
       title: title.trim(),
       description: description ? description.trim() : '',
       createdBy: req.user._id,
+      assigneeIds: Array.isArray(assigneeIds) ? assigneeIds : [],
+      primaryAssigneeId: primaryAssigneeId || null,
       startDate: startDate || null,
       dueDate: dueDate || null,
       priority: priority || 'medium',
@@ -116,7 +118,7 @@ exports.updateTask = async (req, res) => {
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'Bạn không có quyền chỉnh sửa công việc này',
+        message: 'Bạn chỉ có quyền xem (viewer), không thể chỉnh sửa công việc này',
       });
     }
 
@@ -164,6 +166,12 @@ exports.updateStatus = async (req, res) => {
         message: 'Bạn không có quyền thay đổi trạng thái công việc này',
       });
     }
+    if (permission === 'viewer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Quyền xem (viewer) không thể đổi trạng thái công việc',
+      });
+    }
 
     const updated = await taskStore.updateStatus(id, status);
 
@@ -209,6 +217,46 @@ exports.deleteTask = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi xóa công việc: ' + error.message,
+    });
+  }
+};
+
+// 7. Giao việc cho thành viên & chỉ định người phụ trách chính (Assign task)
+exports.assignTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+    let { assigneeIds, primaryAssigneeId } = req.body;
+
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const permission = await taskStore.checkPermission(id, userId);
+    if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền giao việc này cho thành viên khác',
+      });
+    }
+
+    assigneeIds = Array.isArray(assigneeIds) ? assigneeIds : [];
+    if (primaryAssigneeId && !assigneeIds.includes(primaryAssigneeId)) {
+      assigneeIds.push(primaryAssigneeId);
+    }
+
+    const updated = await taskStore.assignTask(id, { assigneeIds, primaryAssigneeId });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật phân công việc thành công',
+      data: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi giao việc: ' + error.message,
     });
   }
 };

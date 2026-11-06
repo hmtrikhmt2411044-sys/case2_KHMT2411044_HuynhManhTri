@@ -13,4 +13,7 @@ router.put('/:id', taskController.updateTask);
 router.patch('/:id/status', taskController.updateStatus);
 router.delete('/:id', taskController.deleteTask);
 
+// Giao việc cho thành viên & chỉ định người phụ trách chính (Nhóm C)
+router.post('/:id/assign', taskController.assignTask);
+
 module.exports = router;
