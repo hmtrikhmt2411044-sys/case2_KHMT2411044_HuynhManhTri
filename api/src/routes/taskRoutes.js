@@ -20,4 +20,7 @@ router.post('/:id/assign', taskController.assignTask);
 router.post('/:id/share', taskController.shareTask);
 router.get('/:id/shares', taskController.getTaskShares);
 
+// Thu hồi quyền chia sẻ (Nhóm C)
+router.delete('/:id/share/:targetUserId', taskController.revokeShare);
+
 module.exports = router;

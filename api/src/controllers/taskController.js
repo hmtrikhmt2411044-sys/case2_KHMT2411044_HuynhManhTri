@@ -321,7 +321,40 @@ exports.shareTask = async (req, res) => {
   }
 };
 
-// 9. Lấy danh sách chia sẻ của công việc
+// 9. Thu hồi quyền chia sẻ
+exports.revokeShare = async (req, res) => {
+  try {
+    const { id, targetUserId } = req.params;
+    const userId = req.user._id;
+
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const userPermission = await taskStore.checkPermission(id, userId);
+    if (userPermission !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ người tạo (owner) mới có quyền thu hồi chia sẻ',
+      });
+    }
+
+    await taskStore.revokeShare(id, targetUserId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đã thu hồi quyền chia sẻ công việc',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi thu hồi chia sẻ: ' + error.message,
+    });
+  }
+};
+
+// 10. Lấy danh sách chia sẻ của công việc
 exports.getTaskShares = async (req, res) => {
   try {
     const { id } = req.params;
