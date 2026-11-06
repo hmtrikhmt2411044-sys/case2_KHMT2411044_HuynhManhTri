@@ -55,6 +55,20 @@ class ApiClient {
     );
   }
 
+  static Future<http.Response> patch(
+    String endpoint, {
+    Map<String, dynamic>? body,
+    bool requireAuth = false,
+  }) async {
+    final uri = Uri.parse('${AppConstants.baseUrl}$endpoint');
+    final headers = await _getHeaders(requireAuth: requireAuth);
+    return await http.patch(
+      uri,
+      headers: headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+  }
+
   static Future<http.Response> delete(String endpoint, {bool requireAuth = false}) async {
     final uri = Uri.parse('${AppConstants.baseUrl}$endpoint');
     final headers = await _getHeaders(requireAuth: requireAuth);
