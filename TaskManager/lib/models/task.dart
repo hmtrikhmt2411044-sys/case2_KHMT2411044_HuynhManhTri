@@ -30,6 +30,7 @@ class TaskModel {
   });
 
   factory TaskModel.fromJson(Map<String, dynamic> json) {
+    // Parse createdBy
     User? creator;
     if (json['createdBy'] is Map<String, dynamic>) {
       creator = User.fromJson(json['createdBy']);
@@ -37,6 +38,7 @@ class TaskModel {
       creator = User(id: json['createdBy'], fullName: 'Người tạo', email: '');
     }
 
+    // Parse primaryAssigneeId
     User? primary;
     if (json['primaryAssigneeId'] is Map<String, dynamic>) {
       primary = User.fromJson(json['primaryAssigneeId']);
@@ -44,6 +46,7 @@ class TaskModel {
       primary = User(id: json['primaryAssigneeId'], fullName: '', email: '');
     }
 
+    // Parse assigneeIds
     List<User> listAssignees = [];
     if (json['assigneeIds'] is List) {
       for (var item in json['assigneeIds']) {
