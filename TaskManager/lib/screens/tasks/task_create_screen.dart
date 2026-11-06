@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../models/user.dart';
 import '../../services/task_service.dart';
+import '../../services/user_service.dart';
 
 class TaskCreateScreen extends StatefulWidget {
   const TaskCreateScreen({super.key});
@@ -17,13 +19,34 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
   final String _status = 'todo';
   DateTime? _startDate;
   DateTime? _dueDate;
+
+  List<User> _availableUsers = [];
+  final List<User> _selectedAssignees = [];
+  User? _primaryAssignee;
   bool _isLoading = false;
+  bool _isLoadingUsers = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUsers() async {
+    final users = await UserService.searchUsers();
+    if (mounted) {
+      setState(() {
+        _availableUsers = users;
+        _isLoadingUsers = false;
+      });
+    }
   }
 
   Future<void> _pickDate({required bool isStart}) async {
@@ -90,6 +113,8 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
         status: _status,
         startDate: _startDate,
         dueDate: _dueDate,
+        assigneeIds: _selectedAssignees.map((u) => u.id).toList(),
+        primaryAssigneeId: _primaryAssignee?.id,
       );
 
       if (mounted) {
@@ -149,6 +174,7 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Tiêu đề
               _buildSectionTitle('Tên công việc *'),
               const SizedBox(height: 8),
               TextFormField(
@@ -166,6 +192,7 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Mô tả
               _buildSectionTitle('Mô tả chi tiết'),
               const SizedBox(height: 8),
               TextFormField(
@@ -178,6 +205,7 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Mức độ ưu tiên
               _buildSectionTitle('Mức độ ưu tiên'),
               const SizedBox(height: 8),
               Row(
@@ -191,6 +219,7 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Thời hạn (Start Date & Due Date)
               _buildSectionTitle('Thời hạn thực hiện'),
               const SizedBox(height: 8),
               Row(
@@ -214,8 +243,15 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
+
+              // Phân công thành viên
+              _buildSectionTitle('Giao việc cho thành viên'),
+              const SizedBox(height: 8),
+              _buildAssigneeSelector(),
               const SizedBox(height: 32),
 
+              // Nút tạo công việc
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -351,6 +387,205 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAssigneeSelector() {
+    if (_isLoadingUsers) {
+      return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Đã chọn: ${_selectedAssignees.length} thành viên',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              ),
+              TextButton.icon(
+                onPressed: _showAssignDialog,
+                icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                label: const Text('Thêm / Sửa'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF2563EB),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+          if (_selectedAssignees.isNotEmpty) ...[
+            const Divider(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _selectedAssignees.map((u) {
+                final isPrimary = _primaryAssignee?.id == u.id;
+                return Chip(
+                  avatar: CircleAvatar(
+                    backgroundColor: const Color(0xFF2563EB),
+                    child: Text(
+                      u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : '?',
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ),
+                  label: Text(
+                    '${u.fullName}${isPrimary ? ' (Chính)' : ''}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isPrimary ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  onDeleted: () {
+                    setState(() {
+                      _selectedAssignees.removeWhere((item) => item.id == u.id);
+                      if (_primaryAssignee?.id == u.id) {
+                        _primaryAssignee = _selectedAssignees.isNotEmpty ? _selectedAssignees.first : null;
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showAssignDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Chọn thành viên thực hiện',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Tích chọn để giao việc, bấm vào sao để đặt làm người phụ trách chính',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: _availableUsers.isEmpty
+                        ? const Center(child: Text('Không có thành viên nào khác trong hệ thống'))
+                        : ListView.separated(
+                            itemCount: _availableUsers.length,
+                            separatorBuilder: (_, index) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final u = _availableUsers[index];
+                              final isSelected = _selectedAssignees.any((item) => item.id == u.id);
+                              final isPrimary = _primaryAssignee?.id == u.id;
+
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: CircleAvatar(
+                                  backgroundColor: const Color(0xFFEFF6FF),
+                                  child: Text(
+                                    u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : '?',
+                                    style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                subtitle: Text(u.email, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isSelected)
+                                      IconButton(
+                                        tooltip: isPrimary ? 'Người phụ trách chính' : 'Đặt làm phụ trách chính',
+                                        icon: Icon(
+                                          isPrimary ? Icons.star : Icons.star_border,
+                                          color: isPrimary ? Colors.amber : Colors.grey,
+                                        ),
+                                        onPressed: () {
+                                          setModalState(() {
+                                            _primaryAssignee = isPrimary ? null : u;
+                                          });
+                                          setState(() {});
+                                        },
+                                      ),
+                                    Checkbox(
+                                      value: isSelected,
+                                      activeColor: const Color(0xFF2563EB),
+                                      onChanged: (val) {
+                                        setModalState(() {
+                                          if (val == true) {
+                                            _selectedAssignees.add(u);
+                                            _primaryAssignee ??= u;
+                                          } else {
+                                            _selectedAssignees.removeWhere((item) => item.id == u.id);
+                                            if (_primaryAssignee?.id == u.id) {
+                                              _primaryAssignee = _selectedAssignees.isNotEmpty ? _selectedAssignees.first : null;
+                                            }
+                                          }
+                                        });
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Hoàn tất chọn', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
