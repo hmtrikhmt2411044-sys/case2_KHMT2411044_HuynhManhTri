@@ -20,7 +20,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   bool _isLoading = true;
 
   // Filters
-  String _selectedType = 'all'; // 'all', 'my_tasks'
+  String _selectedType = 'all'; // 'all', 'my_tasks', 'assigned', 'shared'
   String? _selectedStatus; // null, 'todo', 'in_progress', 'completed'
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -118,7 +118,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const Text(
-                    'Quản lý công việc và tiến độ',
+                    'Quản lý công việc và tiến độ nhóm',
                     style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                   ),
                 ],
@@ -149,11 +149,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
         onRefresh: _fetchTasks,
         child: Column(
           children: [
+            // Thanh tìm kiếm và bộ lọc nhanh
             Container(
               color: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 children: [
+                  // Search input
                   TextField(
                     controller: _searchController,
                     onChanged: (val) {
@@ -184,16 +186,27 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _buildScopeFilterChip('all', 'Tất cả'),
-                      const SizedBox(width: 8),
-                      _buildScopeFilterChip('my_tasks', 'Của tôi'),
-                    ],
+
+                  // Scope Filter Chips
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildScopeFilterChip('all', 'Tất cả'),
+                        const SizedBox(width: 8),
+                        _buildScopeFilterChip('my_tasks', 'Của tôi'),
+                        const SizedBox(width: 8),
+                        _buildScopeFilterChip('assigned', 'Được giao'),
+                        const SizedBox(width: 8),
+                        _buildScopeFilterChip('shared', 'Được chia sẻ'),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
+
+            // Summary Metrics Bar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
@@ -206,6 +219,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
                 ],
               ),
             ),
+
+            // Danh sách công việc
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
@@ -346,7 +361,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(
+            color: isDone ? const Color(0xFFE2E8F0) : const Color(0xFFE2E8F0),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),
@@ -358,6 +375,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Top row: Priority badge + Due date
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -394,6 +412,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
               ],
             ),
             const SizedBox(height: 10),
+
+            // Middle row: Checkbox + Title
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -444,16 +464,36 @@ class _TaskListScreenState extends State<TaskListScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                task.statusLabel,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w500),
-              ),
+
+            // Bottom row: Status badge + Assignees
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    task.statusLabel,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w500),
+                  ),
+                ),
+                if (task.assignees.isNotEmpty)
+                  Row(
+                    children: [
+                      const Icon(Icons.people_outline, size: 14, color: Color(0xFF64748B)),
+                      const SizedBox(width: 4),
+                      Text(
+                        task.primaryAssignee != null
+                            ? task.primaryAssignee!.fullName
+                            : '${task.assignees.length} người',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ],
         ),
