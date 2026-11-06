@@ -5,15 +5,12 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 router.use(authMiddleware);
 
-// Lấy danh sách và chi tiết công việc
+// CRUD công việc (Nhóm B)
 router.get('/', taskController.getTasks);
-router.get('/:id', taskController.getTaskById);
-
-// Tạo công việc mới
 router.post('/', taskController.createTask);
-
-// Cập nhật công việc và trạng thái
+router.get('/:id', taskController.getTaskById);
 router.put('/:id', taskController.updateTask);
 router.patch('/:id/status', taskController.updateStatus);
+router.delete('/:id', taskController.deleteTask);
 
 module.exports = router;
