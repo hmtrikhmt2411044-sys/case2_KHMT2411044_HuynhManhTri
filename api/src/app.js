@@ -3,6 +3,7 @@ const cors = require('cors');
 
 const authRoutes = require('./routes/authRoutes');
 const taskRoutes = require('./routes/taskRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.get('/api', (req, res) => {
 // Gắn các route nghiệp vụ
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/users', userRoutes);
 
 // Xử lý route không tồn tại (404)
 app.use((req, res) => {

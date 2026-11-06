@@ -157,4 +157,40 @@ module.exports = {
     writeLocalUsers(users);
     return true;
   },
+
+  async searchUsers(query = '', excludeUserId = null) {
+    const excludeStr = excludeUserId ? String(excludeUserId) : null;
+    if (isMongooseConnected()) {
+      const filter = {};
+      if (query && query.trim()) {
+        filter.$or = [
+          { fullName: { $regex: query.trim(), $options: 'i' } },
+          { email: { $regex: query.trim(), $options: 'i' } },
+        ];
+      }
+      if (excludeStr) {
+        filter._id = { $ne: excludeStr };
+      }
+      return await User.find(filter).select('_id fullName email role avatarUrl').limit(30);
+    }
+    const users = readLocalUsers();
+    return users
+      .filter((u) => {
+        if (excludeStr && String(u._id) === excludeStr) return false;
+        if (!query || !query.trim()) return true;
+        const q = query.trim().toLowerCase();
+        return (
+          (u.fullName && u.fullName.toLowerCase().includes(q)) ||
+          (u.email && u.email.toLowerCase().includes(q))
+        );
+      })
+      .slice(0, 30)
+      .map((u) => ({
+        _id: u._id,
+        fullName: u.fullName,
+        email: u.email,
+        role: u.role,
+        avatarUrl: u.avatarUrl,
+      }));
+  },
 };
