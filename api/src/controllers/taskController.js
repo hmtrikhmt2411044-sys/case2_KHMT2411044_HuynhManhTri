@@ -99,3 +99,83 @@ exports.createTask = async (req, res) => {
     });
   }
 };
+
+// 4. Cập nhật thông tin công việc
+exports.updateTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+    const { title, description, startDate, dueDate, priority, status } = req.body;
+
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const permission = await taskStore.checkPermission(id, userId);
+    if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền chỉnh sửa công việc này',
+      });
+    }
+
+    const updates = {};
+    if (title && title.trim()) updates.title = title.trim();
+    if (description !== undefined) updates.description = description.trim();
+    if (startDate !== undefined) updates.startDate = startDate;
+    if (dueDate !== undefined) updates.dueDate = dueDate;
+    if (priority) updates.priority = priority;
+    if (status) updates.status = status;
+
+    const updated = await taskStore.updateTask(id, updates);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật công việc thành công',
+      data: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật công việc: ' + error.message,
+    });
+  }
+};
+
+// 5. Cập nhật nhanh trạng thái công việc (todo -> in_progress -> completed)
+exports.updateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = req.user._id;
+
+    if (!['todo', 'in_progress', 'completed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trạng thái không hợp lệ (chỉ chấp nhận: todo, in_progress, completed)',
+      });
+    }
+
+    const permission = await taskStore.checkPermission(id, userId);
+    if (!permission && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền thay đổi trạng thái công việc này',
+      });
+    }
+
+    const updated = await taskStore.updateStatus(id, status);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật trạng thái công việc thành công',
+      data: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật trạng thái: ' + error.message,
+    });
+  }
+};

@@ -12,4 +12,8 @@ router.get('/:id', taskController.getTaskById);
 // Tạo công việc mới
 router.post('/', taskController.createTask);
 
+// Cập nhật công việc và trạng thái
+router.put('/:id', taskController.updateTask);
+router.patch('/:id/status', taskController.updateStatus);
+
 module.exports = router;
