@@ -221,7 +221,7 @@ exports.deleteTask = async (req, res) => {
   }
 };
 
-// 7. Giao việc cho thành viên & chỉ định người phụ trách chính (Assign task)
+// 7. Giao việc cho thành viên (Assign task)
 exports.assignTask = async (req, res) => {
   try {
     const { id } = req.params;
@@ -257,6 +257,100 @@ exports.assignTask = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi giao việc: ' + error.message,
+    });
+  }
+};
+
+// 8. Chia sẻ công việc với quyền viewer hoặc editor
+exports.shareTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+    const { targetUserId, permission } = req.body;
+
+    if (!targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng chọn người dùng cần chia sẻ',
+      });
+    }
+
+    if (!['viewer', 'editor'].includes(permission)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Quyền chia sẻ không hợp lệ (chỉ chấp nhận: viewer hoặc editor)',
+      });
+    }
+
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const userPermission = await taskStore.checkPermission(id, userId);
+    if (userPermission !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ người tạo (owner) mới có quyền chia sẻ công việc này',
+      });
+    }
+
+    if (String(task.createdBy?._id || task.createdBy) === String(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bạn đã là chủ sở hữu (owner) của công việc này',
+      });
+    }
+
+    const share = await taskStore.shareTask(id, {
+      userId: targetUserId,
+      permission,
+      sharedBy: userId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã chia sẻ công việc với quyền ${permission === 'editor' ? 'chỉnh sửa (editor)' : 'xem (viewer)'}`,
+      data: share,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi chia sẻ công việc: ' + error.message,
+    });
+  }
+};
+
+// 9. Lấy danh sách chia sẻ của công việc
+exports.getTaskShares = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const permission = await taskStore.checkPermission(id, userId);
+    if (!permission && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xem thông tin chia sẻ của công việc này',
+      });
+    }
+
+    const shares = await taskStore.getTaskShares(id);
+
+    return res.status(200).json({
+      success: true,
+      count: shares.length,
+      data: shares,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách chia sẻ: ' + error.message,
     });
   }
 };

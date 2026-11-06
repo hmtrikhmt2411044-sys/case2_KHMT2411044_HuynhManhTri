@@ -16,4 +16,8 @@ router.delete('/:id', taskController.deleteTask);
 // Giao việc cho thành viên & chỉ định người phụ trách chính (Nhóm C)
 router.post('/:id/assign', taskController.assignTask);
 
+// Chia sẻ công việc với quyền viewer/editor & lấy danh sách chia sẻ (Nhóm C)
+router.post('/:id/share', taskController.shareTask);
+router.get('/:id/shares', taskController.getTaskShares);
+
 module.exports = router;
