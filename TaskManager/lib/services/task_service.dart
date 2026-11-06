@@ -58,14 +58,14 @@ class TaskService {
   }) async {
     final payload = <String, dynamic>{
       'title': title,
-      if (description != null) 'description': description,
-      if (priority != null) 'priority': priority,
-      if (status != null) 'status': status,
-      if (startDate != null) 'startDate': startDate.toIso8601String(),
-      if (dueDate != null) 'dueDate': dueDate.toIso8601String(),
-      if (assigneeIds != null) 'assigneeIds': assigneeIds,
-      if (primaryAssigneeId != null) 'primaryAssigneeId': primaryAssigneeId,
     };
+    if (description != null) payload['description'] = description;
+    if (priority != null) payload['priority'] = priority;
+    if (status != null) payload['status'] = status;
+    if (startDate != null) payload['startDate'] = startDate.toIso8601String();
+    if (dueDate != null) payload['dueDate'] = dueDate.toIso8601String();
+    if (assigneeIds != null) payload['assigneeIds'] = assigneeIds;
+    if (primaryAssigneeId != null) payload['primaryAssigneeId'] = primaryAssigneeId;
 
     final res = await ApiClient.post('/tasks', body: payload, requireAuth: true);
     if (res.statusCode == 201) {

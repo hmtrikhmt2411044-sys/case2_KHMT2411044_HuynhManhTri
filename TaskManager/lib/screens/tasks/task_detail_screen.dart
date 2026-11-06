@@ -215,6 +215,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         Navigator.pop(ctx);
                         final res = await TaskService.assignTask(
                           _task!.id,
@@ -223,7 +224,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         );
                         if (!mounted) return;
                         if (res != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          messenger.showSnackBar(
                             const SnackBar(
                               content: Text('Cập nhật phân công thành công!'),
                               backgroundColor: Color(0xFF10B981),
@@ -398,6 +399,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       onPressed: selectedUser == null
                           ? null
                           : () async {
+                              final messenger = ScaffoldMessenger.of(context);
                               Navigator.pop(ctx);
                               final success = await TaskService.shareTask(
                                 _task!.id,
@@ -406,7 +408,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                               );
                               if (!mounted) return;
                               if (success) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   const SnackBar(
                                     content: Text('Đã chia sẻ công việc thành công!'),
                                     backgroundColor: Color(0xFF10B981),
@@ -414,7 +416,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 );
                                 _loadData();
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   const SnackBar(
                                     content: Text('Không thể chia sẻ công việc này.'),
                                     backgroundColor: Color(0xFFEF4444),
