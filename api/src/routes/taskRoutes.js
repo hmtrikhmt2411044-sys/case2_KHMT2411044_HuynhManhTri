@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/taskController');
+const emailController = require('../controllers/emailController');
 const authMiddleware = require('../middleware/authMiddleware');
 
 // Tất cả các route /tasks đều yêu cầu đăng nhập
@@ -19,5 +20,8 @@ router.post('/:id/assign', taskController.assignTask);
 router.post('/:id/share', taskController.shareTask);
 router.delete('/:id/share/:targetUserId', taskController.revokeShare);
 router.get('/:id/shares', taskController.getTaskShares);
+
+// Lịch sử gửi email của công việc (Nhóm chức năng D)
+router.get('/:id/email-logs', emailController.getTaskEmailLogs);
 
 module.exports = router;
