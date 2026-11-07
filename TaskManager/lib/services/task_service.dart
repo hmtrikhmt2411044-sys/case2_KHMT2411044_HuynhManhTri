@@ -3,6 +3,7 @@ import 'api_client.dart';
 import '../models/task.dart';
 import '../models/task_share.dart';
 import '../models/email_log.dart';
+import '../models/task_activity.dart';
 
 class TaskService {
   // Lấy danh sách công việc theo bộ lọc
@@ -173,6 +174,19 @@ class TaskService {
       final body = jsonDecode(res.body);
       if (body['success'] == true && body['data'] is List) {
         return (body['data'] as List).map((e) => EmailLogModel.fromJson(e)).toList();
+      }
+    }
+    return [];
+  }
+
+
+  // Lấy lịch sử hoạt động của công việc (Nhóm chức năng E)
+  static Future<List<TaskActivityModel>> getTaskActivities(String taskId) async {
+    final res = await ApiClient.get('/tasks/$taskId/activities', requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      if (body['success'] == true && body['data'] is List) {
+        return (body['data'] as List).map((a) => TaskActivityModel.fromJson(a)).toList();
       }
     }
     return [];
