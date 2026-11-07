@@ -6,6 +6,7 @@ const taskRoutes = require('./routes/taskRoutes');
 const userRoutes = require('./routes/userRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const emailRoutes = require('./routes/emailRoutes');
+const statisticsRoutes = require('./routes/statisticsRoutes');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/email-logs', emailRoutes);
+app.use('/api/statistics', statisticsRoutes);
 
 // Xử lý route không tồn tại (404)
 app.use((req, res) => {
