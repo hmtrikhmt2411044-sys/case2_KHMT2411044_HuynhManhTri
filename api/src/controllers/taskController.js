@@ -94,8 +94,9 @@ exports.createTask = async (req, res) => {
     });
 
     // Tự động gửi thông báo trong ứng dụng & email cho các thành viên được giao
-    if (newTask.assignees && newTask.assignees.length > 0) {
-      newTask.assignees.forEach(async (u) => {
+    const newAssignees = newTask.assigneeIds || newTask.assignees || [];
+    if (newAssignees && newAssignees.length > 0) {
+      newAssignees.forEach(async (u) => {
         const uId = String(u._id || u.id);
         if (uId !== String(req.user._id)) {
           const isPrimary = String(newTask.primaryAssigneeId?._id || newTask.primaryAssigneeId) === uId;
@@ -224,8 +225,9 @@ exports.updateStatus = async (req, res) => {
       if (creatorId && creatorId !== String(userId)) {
         recipients.add(creatorId);
       }
-      if (Array.isArray(task.assignees)) {
-        task.assignees.forEach((a) => {
+      const taskAssignees = task.assigneeIds || task.assignees || [];
+      if (Array.isArray(taskAssignees)) {
+        taskAssignees.forEach((a) => {
           const aId = String(a._id || a.id);
           if (aId !== String(userId)) recipients.add(aId);
         });
@@ -336,8 +338,9 @@ exports.assignTask = async (req, res) => {
     const updated = await taskStore.assignTask(id, { assigneeIds, primaryAssigneeId });
 
     // Tự động thông báo và gửi email cho các thành viên được giao việc
-    if (updated.assignees && updated.assignees.length > 0) {
-      updated.assignees.forEach(async (u) => {
+    const updatedAssignees = updated.assigneeIds || updated.assignees || [];
+    if (updatedAssignees && updatedAssignees.length > 0) {
+      updatedAssignees.forEach(async (u) => {
         const uId = String(u._id || u.id);
         if (uId !== String(req.user._id)) {
           const isPrimary = String(updated.primaryAssigneeId?._id || updated.primaryAssigneeId) === uId;
