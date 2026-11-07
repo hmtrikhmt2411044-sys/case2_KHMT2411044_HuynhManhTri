@@ -464,6 +464,9 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
   }
 
   void _showAssignDialog() {
+    String query = '';
+    bool isRefreshing = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -474,113 +477,174 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.7,
+            final filteredUsers = _availableUsers.where((u) {
+              if (query.isEmpty) return true;
+              return u.fullName.toLowerCase().contains(query) ||
+                     u.email.toLowerCase().contains(query);
+            }).toList();
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCBD5E1),
-                        borderRadius: BorderRadius.circular(2),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.75,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCBD5E1),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Chọn thành viên thực hiện',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Tích chọn để giao việc, bấm vào sao để đặt làm người phụ trách chính',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: _availableUsers.isEmpty
-                        ? const Center(child: Text('Không có thành viên nào khác trong hệ thống'))
-                        : ListView.separated(
-                            itemCount: _availableUsers.length,
-                            separatorBuilder: (_, index) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final u = _availableUsers[index];
-                              final isSelected = _selectedAssignees.any((item) => item.id == u.id);
-                              final isPrimary = _primaryAssignee?.id == u.id;
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Chọn thành viên thực hiện',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                        ),
+                        if (isRefreshing)
+                          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        else
+                          IconButton(
+                            icon: const Icon(Icons.refresh, size: 20, color: Color(0xFF2563EB)),
+                            tooltip: 'Làm mới danh sách',
+                            onPressed: () async {
+                              setModalState(() => isRefreshing = true);
+                              final users = await UserService.searchUsers();
+                              if (mounted) {
+                                setState(() => _availableUsers = users);
+                              }
+                              setModalState(() => isRefreshing = false);
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Tích chọn để giao việc, bấm vào sao để đặt làm người phụ trách chính',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 10),
+                    // Ô tìm kiếm thành viên theo tên hoặc email
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Tìm kiếm theo tên hoặc email...',
+                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                        prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        filled: true,
+                        fillColor: const Color(0xFFF1F5F9),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (val) {
+                        setModalState(() => query = val.trim().toLowerCase());
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: filteredUsers.isEmpty
+                          ? Center(
+                              child: Text(
+                                query.isNotEmpty
+                                    ? 'Không tìm thấy thành viên nào khớp với "$query"'
+                                    : 'Chưa có thành viên nào khác trong hệ thống.\nHãy đăng ký tài khoản mới để giao việc!',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: filteredUsers.length,
+                              separatorBuilder: (_, index) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final u = filteredUsers[index];
+                                final isSelected = _selectedAssignees.any((item) => item.id == u.id);
+                                final isPrimary = _primaryAssignee?.id == u.id;
 
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: CircleAvatar(
-                                  backgroundColor: const Color(0xFFEFF6FF),
-                                  child: Text(
-                                    u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : '?',
-                                    style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: CircleAvatar(
+                                    backgroundColor: const Color(0xFFEFF6FF),
+                                    child: Text(
+                                      u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : '?',
+                                      style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
+                                    ),
                                   ),
-                                ),
-                                title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                                subtitle: Text(u.email, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isSelected)
-                                      IconButton(
-                                        tooltip: isPrimary ? 'Người phụ trách chính' : 'Đặt làm phụ trách chính',
-                                        icon: Icon(
-                                          isPrimary ? Icons.star : Icons.star_border,
-                                          color: isPrimary ? Colors.amber : Colors.grey,
+                                  title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                  subtitle: Text(u.email, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isSelected)
+                                        IconButton(
+                                          tooltip: isPrimary ? 'Người phụ trách chính' : 'Đặt làm phụ trách chính',
+                                          icon: Icon(
+                                            isPrimary ? Icons.star : Icons.star_border,
+                                            color: isPrimary ? Colors.amber : Colors.grey,
+                                          ),
+                                          onPressed: () {
+                                            setModalState(() {
+                                              _primaryAssignee = isPrimary ? null : u;
+                                            });
+                                            setState(() {});
+                                          },
                                         ),
-                                        onPressed: () {
+                                      Checkbox(
+                                        value: isSelected,
+                                        activeColor: const Color(0xFF2563EB),
+                                        onChanged: (val) {
                                           setModalState(() {
-                                            _primaryAssignee = isPrimary ? null : u;
+                                            if (val == true) {
+                                              _selectedAssignees.add(u);
+                                              _primaryAssignee ??= u;
+                                            } else {
+                                              _selectedAssignees.removeWhere((item) => item.id == u.id);
+                                              if (_primaryAssignee?.id == u.id) {
+                                                _primaryAssignee = _selectedAssignees.isNotEmpty ? _selectedAssignees.first : null;
+                                              }
+                                            }
                                           });
                                           setState(() {});
                                         },
                                       ),
-                                    Checkbox(
-                                      value: isSelected,
-                                      activeColor: const Color(0xFF2563EB),
-                                      onChanged: (val) {
-                                        setModalState(() {
-                                          if (val == true) {
-                                            _selectedAssignees.add(u);
-                                            _primaryAssignee ??= u;
-                                          } else {
-                                            _selectedAssignees.removeWhere((item) => item.id == u.id);
-                                            if (_primaryAssignee?.id == u.id) {
-                                              _primaryAssignee = _selectedAssignees.isNotEmpty ? _selectedAssignees.first : null;
-                                            }
-                                          }
-                                        });
-                                        setState(() {});
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Hoàn tất chọn', style: TextStyle(fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Hoàn tất chọn', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
