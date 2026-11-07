@@ -153,7 +153,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       : ListView.separated(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           itemCount: _notifications.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          separatorBuilder: (_, index) => const SizedBox(height: 10),
                           itemBuilder: (context, index) {
                             final notif = _notifications[index];
                             return _buildNotificationCard(notif);

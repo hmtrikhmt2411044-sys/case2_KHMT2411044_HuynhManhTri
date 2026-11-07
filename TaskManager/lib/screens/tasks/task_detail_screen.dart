@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/task.dart';
 import '../../models/task_share.dart';
+import '../../models/email_log.dart';
 import '../../models/user.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
@@ -19,6 +20,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   TaskModel? _task;
   String _permission = 'viewer';
   List<TaskShareModel> _shares = [];
+  List<EmailLogModel> _emailLogs = [];
   bool _isLoading = true;
 
   @override
@@ -31,6 +33,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     setState(() => _isLoading = true);
     final detail = await TaskService.getTaskDetail(widget.taskId);
     final shares = await TaskService.getTaskShares(widget.taskId);
+    final emailLogs = await TaskService.getEmailLogs(widget.taskId);
 
     if (mounted) {
       if (detail != null) {
@@ -38,6 +41,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           _task = detail['task'] as TaskModel;
           _permission = detail['permission'] as String;
           _shares = shares;
+          _emailLogs = emailLogs;
           _isLoading = false;
         });
       } else {
@@ -827,10 +831,168 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 20),
+
+            // Lịch sử Email thông báo (Nhóm D)
+            _buildEmailLogsSection(),
             const SizedBox(height: 32),
           ],
         ),
       ),
+    );
+  }
+
+  
+  Future<void> _handleRetryEmail(String logId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await TaskService.retryEmail(logId);
+    if (!mounted) return;
+    if (success) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Đã gửi lại email thành công!'),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+      _loadData();
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Thử gửi lại email thất bại.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+    }
+  }
+
+  Widget _buildEmailLogsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Lịch sử Email thông báo (SMTP)'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${_emailLogs.length} email',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: _emailLogs.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.mail_outline, size: 20, color: Color(0xFF94A3B8)),
+                      SizedBox(width: 10),
+                      Text(
+                        'Chưa có email nào được gửi cho công việc này',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _emailLogs.length,
+                  separatorBuilder: (_, index) => const Divider(height: 16),
+                  itemBuilder: (context, index) {
+                    final log = _emailLogs[index];
+                    final isSent = log.isSent;
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: isSent ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                          child: Icon(
+                            isSent ? Icons.check_circle_outline : Icons.error_outline,
+                            size: 16,
+                            color: isSent ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                log.subject,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Gửi tới: ${log.recipientEmail}',
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                              ),
+                              if (log.errorMessage != null && log.errorMessage!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    'Lỗi: ${log.errorMessage}',
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isSent ? const Color(0xFFD1FAE5) : const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                isSent ? 'Đã gửi' : 'Thất bại',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSent ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                                ),
+                              ),
+                            ),
+                            if (!isSent)
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(40, 24),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () => _handleRetryEmail(log.id),
+                                child: const Text(
+                                  'Gửi lại',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
