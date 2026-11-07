@@ -24,4 +24,7 @@ router.get('/:id/shares', taskController.getTaskShares);
 // Lịch sử gửi email của công việc (Nhóm chức năng D)
 router.get('/:id/email-logs', emailController.getTaskEmailLogs);
 
+// Lịch sử hoạt động của công việc (Nhóm chức năng E)
+router.get('/:id/activities', taskController.getTaskActivities);
+
 module.exports = router;

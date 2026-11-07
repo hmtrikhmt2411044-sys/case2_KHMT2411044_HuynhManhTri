@@ -2,6 +2,7 @@ const taskStore = require('../services/taskStore');
 const userStore = require('../services/userStore');
 const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
+const activityStore = require('../services/activityStore');
 
 // 1. Lấy danh sách công việc của người dùng
 exports.getTasks = async (req, res) => {
@@ -122,6 +123,8 @@ exports.createTask = async (req, res) => {
       });
     }
 
+    await activityStore.logActivity({ taskId: newTask._id, userId: req.user._id, action: 'created', details: { title: newTask.title } });
+
     return res.status(201).json({
       success: true,
       message: 'Tạo công việc mới thành công',
@@ -167,6 +170,8 @@ exports.updateTask = async (req, res) => {
     }
 
     const updated = await taskStore.updateTask(id, filteredUpdates);
+
+    await activityStore.logActivity({ taskId: id, userId, action: 'updated', details: filteredUpdates });
 
     return res.status(200).json({
       success: true,
@@ -252,6 +257,8 @@ exports.updateStatus = async (req, res) => {
     } catch (notifErr) {
       console.warn('[Status Notif Error]', notifErr.message);
     }
+
+    await activityStore.logActivity({ taskId: id, userId, action: 'status_changed', details: { status } });
 
     return res.status(200).json({
       success: true,
@@ -358,6 +365,8 @@ exports.assignTask = async (req, res) => {
       });
     }
 
+    await activityStore.logActivity({ taskId: id, userId, action: 'assigned', details: { assigneesCount: assigneeIds.length, primaryAssigneeId } });
+
     return res.status(200).json({
       success: true,
       message: 'Cập nhật phân công việc thành công',
@@ -445,6 +454,8 @@ exports.shareTask = async (req, res) => {
       console.warn('[Share Notif Error]', notifErr.message);
     }
 
+    await activityStore.logActivity({ taskId: id, userId, action: 'shared', details: { targetUserId, permission } });
+
     return res.status(200).json({
       success: true,
       message: `Đã chia sẻ công việc với quyền ${permission === 'editor' ? 'chỉnh sửa (editor)' : 'xem (viewer)'}`,
@@ -479,6 +490,8 @@ exports.revokeShare = async (req, res) => {
     }
 
     await taskStore.revokeShare(id, targetUserId);
+
+    await activityStore.logActivity({ taskId: id, userId, action: 'share_revoked', details: { targetUserId } });
 
     return res.status(200).json({
       success: true,
@@ -523,6 +536,41 @@ exports.getTaskShares = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi lấy danh sách chia sẻ: ' + error.message,
+    });
+  }
+};
+
+
+// 11. Xem lịch sử hoạt động của công việc
+exports.getTaskActivities = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const permission = await taskStore.checkPermission(id, userId);
+    if (!permission && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xem lịch sử hoạt động của công việc này',
+      });
+    }
+
+    const activities = await activityStore.getActivitiesByTaskId(id);
+
+    return res.status(200).json({
+      success: true,
+      count: activities.length,
+      data: activities,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy lịch sử hoạt động: ' + error.message,
     });
   }
 };
