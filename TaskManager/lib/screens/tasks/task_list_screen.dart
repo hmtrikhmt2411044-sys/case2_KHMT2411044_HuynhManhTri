@@ -7,6 +7,7 @@ import '../profile/profile_screen.dart';
 import 'task_create_screen.dart';
 import 'task_detail_screen.dart';
 import '../notifications/notification_screen.dart';
+import '../statistics/statistics_screen.dart';
 import '../../services/notification_service.dart';
 
 class TaskListScreen extends StatefulWidget {
@@ -142,6 +143,17 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Thống kê & Báo cáo',
+            icon: const Icon(Icons.insights_rounded, color: Color(0xFF2563EB)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StatisticsScreen()),
+              );
+            },
+          ),
+
           IconButton(
             tooltip: 'Thông báo',
             icon: Badge(

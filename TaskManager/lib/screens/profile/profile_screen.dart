@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
+import '../statistics/statistics_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -264,6 +265,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     child: Column(
                       children: [
+                        ListTile(
+                          leading: const Icon(Icons.bar_chart_rounded, color: Color(0xFF2563EB)),
+                          title: const Text('Báo cáo & Thống kê công việc', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('Xem biểu đồ tiến độ và phân tích hiệu suất', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const StatisticsScreen()),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1),
                         ListTile(
                           leading: const Icon(Icons.edit_outlined, color: Colors.blueAccent),
                           title: const Text('Chỉnh sửa thông tin'),
