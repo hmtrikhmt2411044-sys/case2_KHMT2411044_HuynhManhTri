@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'api_client.dart';
 import '../models/task.dart';
 import '../models/task_share.dart';
+import '../models/email_log.dart';
 
 class TaskService {
   // Lấy danh sách công việc theo bộ lọc
@@ -163,5 +164,27 @@ class TaskService {
       }
     }
     return [];
+  }
+
+  // Lấy lịch sử gửi email của công việc (Nhóm chức năng D)
+  static Future<List<EmailLogModel>> getEmailLogs(String taskId) async {
+    final res = await ApiClient.get('/tasks/$taskId/email-logs', requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      if (body['success'] == true && body['data'] is List) {
+        return (body['data'] as List).map((e) => EmailLogModel.fromJson(e)).toList();
+      }
+    }
+    return [];
+  }
+
+  // Thử gửi lại email thất bại (Nhóm chức năng D)
+  static Future<bool> retryEmail(String logId) async {
+    final res = await ApiClient.post('/email-logs/$logId/retry', requireAuth: true);
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body);
+      return body['success'] == true;
+    }
+    return false;
   }
 }
