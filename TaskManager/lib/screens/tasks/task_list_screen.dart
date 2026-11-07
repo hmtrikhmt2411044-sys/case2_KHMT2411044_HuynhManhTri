@@ -19,7 +19,7 @@ class TaskListScreen extends StatefulWidget {
 
 class _TaskListScreenState extends State<TaskListScreen> {
   User? _currentUser;
-  List<TaskModel> _tasks = [];
+  List<TaskModel> _allTasks = [];
   bool _isLoading = true;
 
   // Filters
@@ -62,13 +62,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
   Future<void> _fetchTasks() async {
     final tasks = await TaskService.getTasks(
       type: _selectedType,
-      status: _selectedStatus,
       search: _searchQuery,
     );
 
     if (mounted) {
       setState(() {
-        _tasks = tasks;
+        _allTasks = tasks;
         _isLoading = false;
         _loadUnreadNotifications();
       });
@@ -92,9 +91,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final todoCount = _tasks.where((t) => t.status == 'todo').length;
-    final inProgressCount = _tasks.where((t) => t.status == 'in_progress').length;
-    final completedCount = _tasks.where((t) => t.status == 'completed').length;
+    final todoCount = _allTasks.where((t) => t.status == 'todo').length;
+    final inProgressCount = _allTasks.where((t) => t.status == 'in_progress').length;
+    final completedCount = _allTasks.where((t) => t.status == 'completed').length;
+
+    final displayedTasks = _selectedStatus == null
+        ? _allTasks
+        : _allTasks.where((t) => t.status == _selectedStatus).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -273,14 +276,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
-                  : _tasks.isEmpty
-                      ? _buildEmptyState()
+                  : displayedTasks.isEmpty
+                      ? _buildEmptyState(filterStatus: _selectedStatus)
                       : ListView.separated(
                           padding: const EdgeInsets.only(left: 16, right: 16, bottom: 80, top: 4),
-                          itemCount: _tasks.length,
+                          itemCount: displayedTasks.length,
                           separatorBuilder: (_, index) => const SizedBox(height: 10),
                           itemBuilder: (context, index) {
-                            final task = _tasks[index];
+                            final task = displayedTasks[index];
                             return _buildTaskCard(task);
                           },
                         ),
@@ -338,7 +341,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
           setState(() {
             _selectedStatus = isSelected ? null : statusKey;
           });
-          _fetchTasks();
         },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
@@ -550,7 +552,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({String? filterStatus}) {
+    String title = 'Chưa có công việc nào';
+    String subtitle = 'Bắt đầu tổ chức công việc của bạn bằng cách thêm công việc mới.';
+    if (filterStatus != null) {
+      if (filterStatus == 'todo') title = 'Không có việc cần làm';
+      if (filterStatus == 'in_progress') title = 'Không có việc đang làm';
+      if (filterStatus == 'completed') title = 'Chưa có việc nào hoàn thành';
+      subtitle = 'Chạm vào mục trạng thái khác hoặc thêm việc mới.';
+    }
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -567,17 +578,33 @@ class _TaskListScreenState extends State<TaskListScreen> {
               child: const Icon(Icons.assignment_outlined, size: 36, color: Color(0xFF2563EB)),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Chưa có công việc nào',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Bắt đầu tổ chức công việc của bạn bằng cách thêm công việc mới.',
+            Text(
+              subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
             ),
             const SizedBox(height: 18),
+            if (filterStatus != null) ...[
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() => _selectedStatus = null);
+                },
+                icon: const Icon(Icons.clear_all, size: 18),
+                label: const Text('Xem tất cả công việc'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF2563EB),
+                  side: const BorderSide(color: Color(0xFF2563EB)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             ElevatedButton.icon(
               onPressed: () async {
                 final res = await Navigator.push(
