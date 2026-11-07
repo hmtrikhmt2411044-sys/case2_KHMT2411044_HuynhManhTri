@@ -1,4 +1,7 @@
 const taskStore = require('../services/taskStore');
+const userStore = require('../services/userStore');
+const emailService = require('../services/emailService');
+const notificationService = require('../services/notificationService');
 
 // 1. Lấy danh sách công việc của người dùng
 exports.getTasks = async (req, res) => {
@@ -39,7 +42,7 @@ exports.getTaskById = async (req, res) => {
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy công việc này',
+        message: 'Công việc không tồn tại',
       });
     }
 
@@ -89,6 +92,36 @@ exports.createTask = async (req, res) => {
       status: status || 'todo',
     });
 
+    // Tự động gửi thông báo trong ứng dụng & email cho các thành viên được giao
+    if (newTask.assignees && newTask.assignees.length > 0) {
+      newTask.assignees.forEach(async (u) => {
+        const uId = String(u._id || u.id);
+        if (uId !== String(req.user._id)) {
+          const isPrimary = String(newTask.primaryAssigneeId?._id || newTask.primaryAssigneeId) === uId;
+          try {
+            await notificationService.createNotification({
+              userId: uId,
+              taskId: newTask._id,
+              type: 'assigned',
+              title: isPrimary ? 'Bạn là người phụ trách chính ⭐' : 'Công việc mới được giao',
+              message: `${req.user.fullName} vừa giao cho bạn công việc: "${newTask.title}"`,
+            });
+            if (u.email) {
+              await emailService.sendAssignEmail({
+                toEmail: u.email,
+                recipientName: u.fullName,
+                task: newTask,
+                assignerName: req.user.fullName,
+                isPrimary,
+              });
+            }
+          } catch (notifErr) {
+            console.warn('[Assign Notif Error]', notifErr.message);
+          }
+        }
+      });
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Tạo công việc mới thành công',
@@ -108,7 +141,7 @@ exports.updateTask = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
-    const { title, description, startDate, dueDate, priority, status } = req.body;
+    const updates = req.body;
 
     const task = await taskStore.getTaskById(id);
     if (!task) {
@@ -124,15 +157,16 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    const updates = {};
-    if (title && title.trim()) updates.title = title.trim();
-    if (description !== undefined) updates.description = description.trim();
-    if (startDate !== undefined) updates.startDate = startDate;
-    if (dueDate !== undefined) updates.dueDate = dueDate;
-    if (priority) updates.priority = priority;
-    if (status) updates.status = status;
+    // Lọc các trường được phép cập nhật
+    const allowedFields = ['title', 'description', 'startDate', 'dueDate', 'priority', 'status'];
+    const filteredUpdates = {};
+    for (const key of allowedFields) {
+      if (updates[key] !== undefined) {
+        filteredUpdates[key] = updates[key];
+      }
+    }
 
-    const updated = await taskStore.updateTask(id, updates);
+    const updated = await taskStore.updateTask(id, filteredUpdates);
 
     return res.status(200).json({
       success: true,
@@ -176,6 +210,48 @@ exports.updateStatus = async (req, res) => {
     }
 
     const updated = await taskStore.updateStatus(id, status);
+
+    // Gửi thông báo và email cập nhật trạng thái
+    try {
+      const task = updated;
+      const recipients = new Set();
+      const creatorId = String(task.createdBy?._id || task.createdBy);
+      if (creatorId && creatorId !== String(userId)) {
+        recipients.add(creatorId);
+      }
+      if (Array.isArray(task.assignees)) {
+        task.assignees.forEach((a) => {
+          const aId = String(a._id || a.id);
+          if (aId !== String(userId)) recipients.add(aId);
+        });
+      }
+
+      for (const rId of recipients) {
+        const targetU = await userStore.findById(rId);
+        if (targetU) {
+          const isCompleted = status === 'completed';
+          const statusText = status === 'completed' ? 'Hoàn thành' : status === 'in_progress' ? 'Đang làm' : 'Cần làm';
+          await notificationService.createNotification({
+            userId: rId,
+            taskId: task._id,
+            type: isCompleted ? 'completed' : 'status_changed',
+            title: isCompleted ? 'Công việc đã hoàn thành 🎉' : 'Cập nhật trạng thái công việc',
+            message: `${req.user.fullName} vừa chuyển trạng thái công việc "${task.title}" sang: ${statusText}`,
+          });
+          if (targetU.email) {
+            await emailService.sendStatusUpdateEmail({
+              toEmail: targetU.email,
+              recipientName: targetU.fullName,
+              task,
+              updaterName: req.user.fullName,
+              newStatus: status,
+            });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.warn('[Status Notif Error]', notifErr.message);
+    }
 
     return res.status(200).json({
       success: true,
@@ -252,6 +328,36 @@ exports.assignTask = async (req, res) => {
 
     const updated = await taskStore.assignTask(id, { assigneeIds, primaryAssigneeId });
 
+    // Tự động thông báo và gửi email cho các thành viên được giao việc
+    if (updated.assignees && updated.assignees.length > 0) {
+      updated.assignees.forEach(async (u) => {
+        const uId = String(u._id || u.id);
+        if (uId !== String(req.user._id)) {
+          const isPrimary = String(updated.primaryAssigneeId?._id || updated.primaryAssigneeId) === uId;
+          try {
+            await notificationService.createNotification({
+              userId: uId,
+              taskId: updated._id,
+              type: 'assigned',
+              title: isPrimary ? 'Bạn được đặt làm phụ trách chính ⭐' : 'Phân công công việc',
+              message: `${req.user.fullName} vừa phân công bạn thực hiện công việc: "${updated.title}"`,
+            });
+            if (u.email) {
+              await emailService.sendAssignEmail({
+                toEmail: u.email,
+                recipientName: u.fullName,
+                task: updated,
+                assignerName: req.user.fullName,
+                isPrimary,
+              });
+            }
+          } catch (notifErr) {
+            console.warn('[Assign Notif Error]', notifErr.message);
+          }
+        }
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Cập nhật phân công việc thành công',
@@ -313,6 +419,31 @@ exports.shareTask = async (req, res) => {
       permission,
       sharedBy: userId,
     });
+
+    // Gửi thông báo trong ứng dụng & email chia sẻ
+    try {
+      const targetUser = await userStore.findById(targetUserId);
+      if (targetUser) {
+        await notificationService.createNotification({
+          userId: targetUserId,
+          taskId: task._id,
+          type: 'shared',
+          title: `Được chia sẻ công việc (${permission === 'editor' ? 'Chỉnh sửa' : 'Chỉ xem'})`,
+          message: `${req.user.fullName} vừa chia sẻ công việc "${task.title}" với bạn`,
+        });
+        if (targetUser.email) {
+          await emailService.sendShareEmail({
+            toEmail: targetUser.email,
+            recipientName: targetUser.fullName,
+            task,
+            sharerName: req.user.fullName,
+            permission,
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.warn('[Share Notif Error]', notifErr.message);
+    }
 
     return res.status(200).json({
       success: true,
