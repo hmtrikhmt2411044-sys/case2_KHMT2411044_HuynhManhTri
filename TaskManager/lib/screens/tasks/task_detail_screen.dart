@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/task.dart';
 import '../../models/task_share.dart';
 import '../../models/email_log.dart';
+import '../../models/task_activity.dart';
 import '../../models/user.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
@@ -21,6 +22,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _permission = 'viewer';
   List<TaskShareModel> _shares = [];
   List<EmailLogModel> _emailLogs = [];
+  List<TaskActivityModel> _activities = [];
   bool _isLoading = true;
 
   @override
@@ -34,6 +36,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final detail = await TaskService.getTaskDetail(widget.taskId);
     final shares = await TaskService.getTaskShares(widget.taskId);
     final emailLogs = await TaskService.getEmailLogs(widget.taskId);
+    final activities = await TaskService.getTaskActivities(widget.taskId);
 
     if (mounted) {
       if (detail != null) {
@@ -42,6 +45,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           _permission = detail['permission'] as String;
           _shares = shares;
           _emailLogs = emailLogs;
+          _activities = activities;
           _isLoading = false;
         });
       } else {
@@ -835,6 +839,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             // Lịch sử Email thông báo (Nhóm D)
             _buildEmailLogsSection(),
+            const SizedBox(height: 20),
+            _buildActivitiesTimelineSection(),
             const SizedBox(height: 32),
           ],
         ),
@@ -988,6 +994,121 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           ],
                         ),
                       ],
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  
+  Widget _buildActivitiesTimelineSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Dòng thời gian hoạt động'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${_activities.length} hoạt động',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: _activities.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_toggle_off_outlined, size: 20, color: Color(0xFF94A3B8)),
+                      SizedBox(width: 10),
+                      Text(
+                        'Chưa có lịch sử hoạt động được ghi nhận',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _activities.length,
+                  itemBuilder: (context, index) {
+                    final act = _activities[index];
+                    final isLast = index == _activities.length - 1;
+
+                    return IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Cột Icon và đường Line nối Timeline
+                          Column(
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: act.actionColor.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: act.actionColor.withValues(alpha: 0.4), width: 1.5),
+                                ),
+                                child: Icon(act.actionIcon, size: 14, color: act.actionColor),
+                              ),
+                              if (!isLast)
+                                Expanded(
+                                  child: Container(
+                                    width: 2,
+                                    color: const Color(0xFFE2E8F0),
+                                    margin: const EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(width: 14),
+
+                          // Nội dung hoạt động
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: isLast ? 0 : 18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    act.actionTitle,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    act.timeAgo,
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   },
                 ),
