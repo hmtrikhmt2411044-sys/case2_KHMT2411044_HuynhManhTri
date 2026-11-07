@@ -6,6 +6,8 @@ import '../../services/task_service.dart';
 import '../profile/profile_screen.dart';
 import 'task_create_screen.dart';
 import 'task_detail_screen.dart';
+import '../notifications/notification_screen.dart';
+import '../../services/notification_service.dart';
 
 class TaskListScreen extends StatefulWidget {
   const TaskListScreen({super.key});
@@ -24,6 +26,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   String? _selectedStatus; // null, 'todo', 'in_progress', 'completed'
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _unreadNotificationsCount = 0;
 
   @override
   void initState() {
@@ -41,7 +44,18 @@ class _TaskListScreenState extends State<TaskListScreen> {
     setState(() => _isLoading = true);
     final user = await AuthService.getLocalUser() ?? await AuthService.getProfile();
     _currentUser = user;
+    _loadUnreadNotifications();
     await _fetchTasks();
+  }
+
+  
+  Future<void> _loadUnreadNotifications() async {
+    final count = await NotificationService.getUnreadCount();
+    if (mounted) {
+      setState(() {
+        _unreadNotificationsCount = count;
+      });
+    }
   }
 
   Future<void> _fetchTasks() async {
@@ -55,6 +69,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       setState(() {
         _tasks = tasks;
         _isLoading = false;
+        _loadUnreadNotifications();
       });
     }
   }
@@ -127,6 +142,28 @@ class _TaskListScreenState extends State<TaskListScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Thông báo',
+            icon: Badge(
+              isLabelVisible: _unreadNotificationsCount > 0,
+              label: Text(
+                _unreadNotificationsCount > 99 ? '99+' : _unreadNotificationsCount.toString(),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: const Color(0xFFEF4444),
+              child: const Icon(Icons.notifications_outlined, color: Color(0xFF475569)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationScreen()),
+              ).then((_) {
+                _loadUnreadNotifications();
+                _fetchTasks();
+              });
+            },
+          ),
+
           IconButton(
             tooltip: 'Hồ sơ cá nhân',
             icon: const Icon(Icons.settings_outlined, color: Color(0xFF475569)),
