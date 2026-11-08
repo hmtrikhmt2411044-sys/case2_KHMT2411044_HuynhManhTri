@@ -1,0 +1,10 @@
+{
+  "name": "case2_khmt2411044_huynhmanhtri",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Case Study 2 - Quan ly va giao cong viec nhom",
+  "scripts": {
+    "dev": "npm --prefix api run dev",
+    "start": "npm --prefix api start"
+  }
+}

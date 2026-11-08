@@ -20,14 +20,19 @@ class TaskService {
     if (search != null && search.trim().isNotEmpty) queryParams['search'] = search.trim();
     if (sortBy != null && sortBy.isNotEmpty) queryParams['sortBy'] = sortBy;
 
-    final queryString = Uri(queryParameters: queryParams).query;
-    final res = await ApiClient.get('/tasks?$queryString', requireAuth: true);
+    try {
+      final queryString = Uri(queryParameters: queryParams).query;
+      final res = await ApiClient.get('/tasks?$queryString', requireAuth: true);
 
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      if (body['success'] == true && body['data'] is List) {
-        return (body['data'] as List).map((item) => TaskModel.fromJson(item)).toList();
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        if (body['success'] == true && body['data'] is List) {
+          return (body['data'] as List).map((item) => TaskModel.fromJson(item)).toList();
+        }
       }
+    } catch (e) {
+      // Bắt lỗi kết nối mạng để app không bị treo loading
+      rethrow;
     }
     return [];
   }

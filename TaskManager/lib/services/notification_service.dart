@@ -26,13 +26,15 @@ class NotificationService {
 
   // Đếm số thông báo chưa đọc
   static Future<int> getUnreadCount() async {
-    final res = await ApiClient.get('/notifications/unread-count', requireAuth: true);
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      if (body['success'] == true && body['unreadCount'] != null) {
-        return (body['unreadCount'] as num).toInt();
+    try {
+      final res = await ApiClient.get('/notifications/unread-count', requireAuth: true);
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        if (body['success'] == true && body['unreadCount'] != null) {
+          return (body['unreadCount'] as num).toInt();
+        }
       }
-    }
+    } catch (_) {}
     return 0;
   }
 

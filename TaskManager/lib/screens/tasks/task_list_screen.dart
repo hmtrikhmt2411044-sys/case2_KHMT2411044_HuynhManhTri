@@ -28,6 +28,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   int _unreadNotificationsCount = 0;
+  bool _hasConnectionError = false;
 
   @override
   void initState() {
@@ -42,11 +43,20 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 
   Future<void> _loadUserAndTasks() async {
-    setState(() => _isLoading = true);
-    final user = await AuthService.getLocalUser() ?? await AuthService.getProfile();
-    _currentUser = user;
-    _loadUnreadNotifications();
-    await _fetchTasks();
+    setState(() {
+      _isLoading = true;
+      _hasConnectionError = false;
+    });
+    try {
+      final user = await AuthService.getLocalUser() ?? await AuthService.getProfile();
+      if (mounted) setState(() => _currentUser = user);
+      await _loadUnreadNotifications();
+      await _fetchTasks();
+    } catch (_) {
+      if (mounted) setState(() => _hasConnectionError = true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   
@@ -60,17 +70,23 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 
   Future<void> _fetchTasks() async {
-    final tasks = await TaskService.getTasks(
-      type: _selectedType,
-      search: _searchQuery,
-    );
+    try {
+      final tasks = await TaskService.getTasks(
+        type: _selectedType,
+        search: _searchQuery,
+      );
 
-    if (mounted) {
-      setState(() {
-        _allTasks = tasks;
-        _isLoading = false;
-        _loadUnreadNotifications();
-      });
+      if (mounted) {
+        setState(() {
+          _allTasks = tasks;
+          _hasConnectionError = false;
+          _loadUnreadNotifications();
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _hasConnectionError = true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -276,8 +292,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
-                  : displayedTasks.isEmpty
-                      ? _buildEmptyState(filterStatus: _selectedStatus)
+                  : _hasConnectionError && _allTasks.isEmpty
+                      ? _buildConnectionErrorState()
+                      : displayedTasks.isEmpty
+                          ? _buildEmptyState(filterStatus: _selectedStatus)
                       : ListView.separated(
                           padding: const EdgeInsets.only(left: 16, right: 16, bottom: 80, top: 4),
                           itemCount: displayedTasks.length,
@@ -545,6 +563,52 @@ class _TaskListScreenState extends State<TaskListScreen> {
                     ],
                   ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEF2F2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.cloud_off_rounded, size: 36, color: Color(0xFFEF4444)),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Chưa kết nối được máy chủ Backend',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Mở Terminal và gõ lệnh:\nnpm run dev\nđể khởi động máy chủ API.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: _loadUserAndTasks,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Thử kết nối lại'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
             ),
           ],
         ),

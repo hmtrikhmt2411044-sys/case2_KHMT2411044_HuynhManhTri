@@ -24,7 +24,7 @@ class ApiClient {
   static Future<http.Response> get(String endpoint, {bool requireAuth = false}) async {
     final uri = Uri.parse('${AppConstants.baseUrl}$endpoint');
     final headers = await _getHeaders(requireAuth: requireAuth);
-    return await http.get(uri, headers: headers);
+    return await http.get(uri, headers: headers).timeout(const Duration(seconds: 5));
   }
 
   static Future<http.Response> post(
@@ -38,7 +38,7 @@ class ApiClient {
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
-    );
+    ).timeout(const Duration(seconds: 8));
   }
 
   static Future<http.Response> put(
@@ -52,7 +52,7 @@ class ApiClient {
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
-    );
+    ).timeout(const Duration(seconds: 8));
   }
 
   static Future<http.Response> patch(
@@ -66,12 +66,12 @@ class ApiClient {
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
-    );
+    ).timeout(const Duration(seconds: 8));
   }
 
   static Future<http.Response> delete(String endpoint, {bool requireAuth = false}) async {
     final uri = Uri.parse('${AppConstants.baseUrl}$endpoint');
     final headers = await _getHeaders(requireAuth: requireAuth);
-    return await http.delete(uri, headers: headers);
+    return await http.delete(uri, headers: headers).timeout(const Duration(seconds: 5));
   }
 }
