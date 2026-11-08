@@ -17,8 +17,11 @@ router.delete('/:id', taskController.deleteTask);
 
 // Giao việc & Chia sẻ (Nhóm chức năng C)
 router.post('/:id/assign', taskController.assignTask);
+router.post('/:id/assignees', taskController.assignTask);
 router.post('/:id/share', taskController.shareTask);
+router.post('/:id/shares', taskController.shareTask);
 router.delete('/:id/share/:targetUserId', taskController.revokeShare);
+router.delete('/:id/shares/:targetUserId', taskController.revokeShare);
 router.get('/:id/shares', taskController.getTaskShares);
 
 // Lịch sử gửi email của công việc (Nhóm chức năng D)

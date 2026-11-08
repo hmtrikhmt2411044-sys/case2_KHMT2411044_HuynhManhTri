@@ -388,7 +388,8 @@ exports.shareTask = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
-    const { targetUserId, permission } = req.body;
+    const targetUserId = req.body.targetUserId || req.body.userId;
+    const { permission } = req.body;
 
     if (!targetUserId) {
       return res.status(400).json({
