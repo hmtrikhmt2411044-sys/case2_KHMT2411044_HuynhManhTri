@@ -5,7 +5,8 @@ import '../auth/login_screen.dart';
 import '../statistics/statistics_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool isTab;
+  const ProfileScreen({super.key, this.isTab = false});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -222,6 +223,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const Text('Thông Tin Cá Nhân'),
         centerTitle: true,
+        automaticallyImplyLeading: !widget.isTab,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

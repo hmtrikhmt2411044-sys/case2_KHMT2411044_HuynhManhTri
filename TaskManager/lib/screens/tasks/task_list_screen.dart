@@ -7,11 +7,17 @@ import '../profile/profile_screen.dart';
 import 'task_create_screen.dart';
 import 'task_detail_screen.dart';
 import '../notifications/notification_screen.dart';
-import '../statistics/statistics_screen.dart';
 import '../../services/notification_service.dart';
 
 class TaskListScreen extends StatefulWidget {
-  const TaskListScreen({super.key});
+  final bool isTab;
+  final ValueChanged<int>? onSwitchTab;
+
+  const TaskListScreen({
+    super.key,
+    this.isTab = false,
+    this.onSwitchTab,
+  });
 
   @override
   State<TaskListScreen> createState() => _TaskListScreenState();
@@ -125,10 +131,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
           children: [
             GestureDetector(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                ).then((_) => _loadUserAndTasks());
+                if (widget.onSwitchTab != null) {
+                  widget.onSwitchTab!(2);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                  ).then((_) => _loadUserAndTasks());
+                }
               },
               child: CircleAvatar(
                 radius: 18,
@@ -163,17 +173,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Thống kê & Báo cáo',
-            icon: const Icon(Icons.insights_rounded, color: Color(0xFF2563EB)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const StatisticsScreen()),
-              );
-            },
-          ),
-
-          IconButton(
             tooltip: 'Thông báo',
             icon: Badge(
               isLabelVisible: _unreadNotificationsCount > 0,
@@ -199,10 +198,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
             tooltip: 'Hồ sơ cá nhân',
             icon: const Icon(Icons.settings_outlined, color: Color(0xFF475569)),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              ).then((_) => _loadUserAndTasks());
+              if (widget.onSwitchTab != null) {
+                widget.onSwitchTab!(2);
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                ).then((_) => _loadUserAndTasks());
+              }
             },
           ),
           const SizedBox(width: 4),

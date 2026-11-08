@@ -3,7 +3,8 @@ import '../../models/statistics.dart';
 import '../../services/statistics_service.dart';
 
 class StatisticsScreen extends StatefulWidget {
-  const StatisticsScreen({super.key});
+  final bool isTab;
+  const StatisticsScreen({super.key, this.isTab = false});
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
@@ -37,10 +38,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: !widget.isTab,
+        leading: widget.isTab
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Color(0xFF0F172A)),
+                onPressed: () => Navigator.pop(context),
+              ),
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
-import '../tasks/task_list_screen.dart';
+import '../main_navigation_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -55,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const TaskListScreen()),
+        MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
