@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/task.dart';
 import '../../models/task_share.dart';
 import '../../models/email_log.dart';
 import '../../models/task_activity.dart';
 import '../../models/user.dart';
+import '../../services/api_client.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
+import '../../widgets/status_sheet.dart';
 import 'task_edit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -24,6 +27,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   List<EmailLogModel> _emailLogs = [];
   List<TaskActivityModel> _activities = [];
   bool _isLoading = true;
+  bool _hasModified = false;
 
   @override
   void initState() {
@@ -34,10 +38,17 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final detail = await TaskService.getTaskDetail(widget.taskId);
-      final shares = await TaskService.getTaskShares(widget.taskId);
-      final emailLogs = await TaskService.getEmailLogs(widget.taskId);
-      final activities = await TaskService.getTaskActivities(widget.taskId);
+      final results = await Future.wait<dynamic>([
+        TaskService.getTaskDetail(widget.taskId),
+        TaskService.getTaskShares(widget.taskId),
+        TaskService.getEmailLogs(widget.taskId),
+        TaskService.getTaskActivities(widget.taskId),
+      ]);
+
+      final detail = results[0] as Map<String, dynamic>?;
+      final shares = results[1] as List<TaskShareModel>;
+      final emailLogs = results[2] as List<EmailLogModel>;
+      final activities = results[3] as List<TaskActivityModel>;
 
       if (mounted && detail != null) {
         setState(() {
@@ -55,18 +66,67 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
-  Future<void> _updateStatus(String newStatus) async {
+  Future<void> _updateStatus(String newStatus, {bool allowUndo = true}) async {
+    if (_task == null || _task!.status == newStatus) return;
+    final previousStatus = _task!.status;
+    HapticFeedback.selectionClick();
+    try {
+      final result = await TaskService.updateStatusWithResult(_task!.id, newStatus);
+      if (!mounted) return;
+      if (result['success'] == true) {
+        _hasModified = true;
+        final label = newStatus == 'completed'
+            ? 'Hoàn thành'
+            : newStatus == 'in_progress'
+                ? 'Đang làm'
+                : 'Cần làm';
+        final color = newStatus == 'completed'
+            ? const Color(0xFF10B981)
+            : newStatus == 'in_progress'
+                ? const Color(0xFF2563EB)
+                : const Color(0xFF475569);
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              newStatus == 'completed'
+                  ? 'Đã hoàn thành công việc!'
+                  : 'Đã chuyển trạng thái sang "$label"',
+            ),
+            backgroundColor: color,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 3),
+            action: allowUndo
+                ? SnackBarAction(
+                    label: 'Hoàn tác',
+                    textColor: Colors.white,
+                    onPressed: () => _updateStatus(previousStatus, allowUndo: false),
+                  )
+                : null,
+          ),
+        );
+        _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Không thể cập nhật trạng thái'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on UnauthorizedException {
+      // Đã xử lý chuyển về màn hình đăng nhập
+    }
+  }
+
+  Future<void> _openDetailStatusSheet() async {
     if (_task == null) return;
-    final success = await TaskService.updateStatus(_task!.id, newStatus);
-    if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã cập nhật trạng thái công việc'),
-          backgroundColor: Color(0xFF10B981),
-          duration: Duration(seconds: 1),
-        ),
-      );
-      _loadData();
+    final chosen = await showTaskStatusSheet(context, _task!);
+    if (chosen != null && chosen != _task!.status && mounted) {
+      await _updateStatus(chosen);
     }
   }
 
@@ -540,45 +600,53 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final isOwner = _permission == 'owner';
     final canEdit = isOwner || _permission == 'editor';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Chi Tiết Công Việc',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF0F172A)),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(context, _hasModified);
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          title: const Text(
+            'Chi Tiết Công Việc',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF0F172A)),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Color(0xFF0F172A)),
+            onPressed: () => Navigator.pop(context, _hasModified),
+          ),
+          actions: [
+            if (canEdit)
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, color: Color(0xFF2563EB)),
+                tooltip: 'Chỉnh sửa',
+                onPressed: () async {
+                  final refresh = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => TaskEditScreen(task: _task!)),
+                  );
+                  if (refresh == true) {
+                    _hasModified = true;
+                    _loadData();
+                  }
+                },
+              ),
+            if (isOwner)
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
+                tooltip: 'Xóa công việc',
+                onPressed: _confirmDelete,
+              ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(color: const Color(0xFFE2E8F0), height: 1),
+          ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          if (canEdit)
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, color: Color(0xFF2563EB)),
-              tooltip: 'Chỉnh sửa',
-              onPressed: () async {
-                final refresh = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => TaskEditScreen(task: _task!)),
-                );
-                if (refresh == true) _loadData();
-              },
-            ),
-          if (isOwner)
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-              tooltip: 'Xóa công việc',
-              onPressed: _confirmDelete,
-            ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFE2E8F0), height: 1),
-        ),
-      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         child: Column(
@@ -636,19 +704,74 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               const SizedBox(height: 20),
             ],
 
-            // Đổi nhanh trạng thái
+            // Đổi nhanh trạng thái / Tiến độ thực hiện
             if (canEdit || _permission == 'assignee') ...[
-              _buildSectionHeader('Đổi trạng thái'),
+              _buildSectionHeader('Tiến độ thực hiện'),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  _buildQuickStatusBtn('todo', 'Cần làm', const Color(0xFF64748B)),
-                  const SizedBox(width: 8),
-                  _buildQuickStatusBtn('in_progress', 'Đang làm', const Color(0xFF2563EB)),
-                  const SizedBox(width: 8),
-                  _buildQuickStatusBtn('completed', 'Hoàn thành', const Color(0xFF10B981)),
-                ],
-              ),
+              if (_task!.status == 'completed')
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 16,
+                        backgroundColor: Color(0xFF10B981),
+                        child: Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Đã hoàn thành công việc',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF065F46)),
+                            ),
+                            Text(
+                              'Nhấn "Mở lại" nếu cần cập nhật thêm.',
+                              style: TextStyle(fontSize: 11.5, color: Color(0xFF047857)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _openDetailStatusSheet,
+                        icon: const Icon(Icons.replay_rounded, size: 15),
+                        label: const Text('Mở lại', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF047857),
+                          side: const BorderSide(color: Color(0xFF6EE7B7)),
+                          backgroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildQuickStatusBtn('todo', 'Cần làm', Icons.radio_button_unchecked_rounded, const Color(0xFF64748B)),
+                      const SizedBox(width: 6),
+                      _buildQuickStatusBtn('in_progress', 'Đang làm', Icons.timelapse_rounded, const Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      _buildQuickStatusBtn('completed', 'Hoàn thành', Icons.check_circle_rounded, const Color(0xFF10B981)),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 20),
             ],
 
@@ -912,6 +1035,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -1253,19 +1377,37 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
-  Widget _buildQuickStatusBtn(String statusKey, String label, Color color) {
+  Widget _buildQuickStatusBtn(String statusKey, String label, IconData icon, Color color) {
     final isSelected = _task!.status == statusKey;
     return Expanded(
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          backgroundColor: isSelected ? color : Colors.white,
-          foregroundColor: isSelected ? Colors.white : color,
-          side: BorderSide(color: color),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+      child: GestureDetector(
+        onTap: () => _updateStatus(statusKey),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? color : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: isSelected ? Colors.white : color),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isSelected ? Colors.white : color,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        onPressed: () => _updateStatus(statusKey),
-        child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
       ),
     );
   }

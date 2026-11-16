@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/task.dart';
 import '../../models/user.dart';
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
+import '../../widgets/status_sheet.dart';
 import '../profile/profile_screen.dart';
 import 'task_create_screen.dart';
 import 'task_detail_screen.dart';
@@ -109,8 +111,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
-  Future<void> _changeTaskStatus(TaskModel task, String newStatus) async {
+  Future<void> _changeTaskStatus(TaskModel task, String newStatus, {bool allowUndo = true}) async {
     if (task.status == newStatus) return;
+    final previousStatus = task.status;
     try {
       final result = await TaskService.updateStatusWithResult(task.id, newStatus);
       if (!mounted) return;
@@ -124,12 +127,27 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ? const Color(0xFF10B981)
             : newStatus == 'in_progress'
                 ? const Color(0xFF2563EB)
-                : const Color(0xFF64748B);
-        ScaffoldMessenger.of(context).showSnackBar(
+                : const Color(0xFF475569);
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('Đã chuyển sang "$label"!'),
+            content: Text(
+              newStatus == 'completed'
+                  ? 'Đã hoàn thành "${task.title}"!'
+                  : 'Đã chuyển sang "$label"',
+            ),
             backgroundColor: color,
-            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 3),
+            action: allowUndo
+                ? SnackBarAction(
+                    label: 'Hoàn tác',
+                    textColor: Colors.white,
+                    onPressed: () => _changeTaskStatus(task, previousStatus, allowUndo: false),
+                  )
+                : null,
           ),
         );
         _fetchTasks();
@@ -138,6 +156,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
           SnackBar(
             content: Text(result['message'] ?? 'Không thể cập nhật trạng thái'),
             backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -152,9 +172,21 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
-  Future<void> _toggleTaskStatus(TaskModel task) async {
-    final newStatus = task.status == 'completed' ? 'todo' : 'completed';
-    await _changeTaskStatus(task, newStatus);
+  Future<void> _openStatusWorkflowSheet(TaskModel task) async {
+    final chosenStatus = await showTaskStatusSheet(context, task);
+    if (chosenStatus != null && chosenStatus != task.status && mounted) {
+      await _changeTaskStatus(task, chosenStatus);
+    }
+  }
+
+  Future<void> _handleLeftCircleTap(TaskModel task) async {
+    if (task.status == 'completed') {
+      // Tránh reset nhầm việc đã xong: mở sheet hỏi mở lại rõ ràng
+      await _openStatusWorkflowSheet(task);
+    } else {
+      HapticFeedback.lightImpact();
+      await _changeTaskStatus(task, 'completed');
+    }
   }
 
   @override
@@ -447,39 +479,62 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   Widget _buildMetricPill(String label, int count, Color color, String statusKey) {
     final isSelected = _selectedStatus == statusKey;
+    final iconData = statusKey == 'completed'
+        ? Icons.check_circle_outline_rounded
+        : statusKey == 'in_progress'
+            ? Icons.timelapse_rounded
+            : Icons.radio_button_unchecked_rounded;
     return Expanded(
       child: GestureDetector(
         onTap: () {
+          HapticFeedback.selectionClick();
           setState(() {
             _selectedStatus = isSelected ? null : statusKey;
           });
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
           decoration: BoxDecoration(
-            color: isSelected ? color.withValues(alpha: 0.12) : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            color: isSelected ? color.withValues(alpha: 0.1) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected ? color : const Color(0xFFE2E8F0),
               width: isSelected ? 1.5 : 1,
             ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.08),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             children: [
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? color : const Color(0xFF0F172A),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(iconData, size: 15, color: isSelected ? color : const Color(0xFF94A3B8)),
+                  const SizedBox(width: 5),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? color : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   color: isSelected ? color : const Color(0xFF64748B),
                 ),
               ),
@@ -492,165 +547,240 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   Widget _buildTaskCard(TaskModel task) {
     final isDone = task.status == 'completed';
+    final isInProgress = task.status == 'in_progress';
 
     Color priorityBg;
     Color priorityFg;
     switch (task.priority) {
       case 'high':
-        priorityBg = const Color(0xFFFEE2E2);
+        priorityBg = const Color(0xFFFEF2F2);
         priorityFg = const Color(0xFFDC2626);
         break;
       case 'low':
-        priorityBg = const Color(0xFFD1FAE5);
+        priorityBg = const Color(0xFFECFDF5);
         priorityFg = const Color(0xFF059669);
         break;
       case 'medium':
       default:
-        priorityBg = const Color(0xFFFEF3C7);
+        priorityBg = const Color(0xFFFFFBEB);
         priorityFg = const Color(0xFFD97706);
         break;
     }
 
-    return GestureDetector(
-      onTap: () async {
-        final res = await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
-        );
-        if (res == true) _fetchTasks();
-      },
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDone ? const Color(0xFFE2E8F0) : const Color(0xFFE2E8F0),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+    return Material(
+      color: isDone ? const Color(0xFFF8FAFC) : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () async {
+          final res = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: task.id)),
+          );
+          if (res == true) _fetchTasks();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isInProgress
+                  ? const Color(0xFFBFDBFE)
+                  : isDone
+                      ? const Color(0xFFE2E8F0)
+                      : const Color(0xFFE2E8F0),
+              width: isInProgress ? 1.2 : 1,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top row: Priority badge + Due date
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: priorityBg,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    task.priorityLabel,
-                    style: TextStyle(color: priorityFg, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                if (task.dueDate != null)
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 13,
-                        color: task.isOverdue ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${task.dueDate!.day}/${task.dueDate!.month}/${task.dueDate!.year}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: task.isOverdue ? FontWeight.bold : FontWeight.normal,
-                          color: task.isOverdue ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // Middle row: Checkbox + Title
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  onTap: () => _toggleTaskStatus(task),
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    margin: const EdgeInsets.only(top: 2, right: 10),
-                    decoration: BoxDecoration(
-                      color: isDone ? const Color(0xFF10B981) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: isDone ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
-                        width: 1.5,
-                      ),
+            boxShadow: isDone
+                ? null
+                : [
+                    BoxShadow(
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
-                    child: isDone
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
-                        : null,
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        task.title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: isDone ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
-                          decoration: isDone ? TextDecoration.lineThrough : null,
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row: Priority dot pill + Due date pill
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: priorityBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(color: priorityFg, shape: BoxShape.circle),
                         ),
-                      ),
-                      if (task.description.isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(width: 5),
                         Text(
-                          task.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+                          task.priorityLabel,
+                          style: TextStyle(color: priorityFg, fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Bottom row: Quick 3-status switcher + Assignees
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildCardStatusMenu(task),
-                if (task.assignees.isNotEmpty)
-                  Row(
-                    children: [
-                      const Icon(Icons.people_outline, size: 14, color: Color(0xFF64748B)),
-                      const SizedBox(width: 4),
-                      Text(
-                        task.primaryAssignee != null
-                            ? task.primaryAssignee!.fullName
-                            : '${task.assignees.length} người',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  if (task.dueDate != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: task.isOverdue ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 11,
+                            color: task.isOverdue ? const Color(0xFFDC2626) : const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${task.dueDate!.day}/${task.dueDate!.month}/${task.dueDate!.year}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: task.isOverdue ? FontWeight.w700 : FontWeight.w500,
+                              color: task.isOverdue ? const Color(0xFFDC2626) : const Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 11),
+
+              // Middle row: Animated Status Circle + Title & Description
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: () => _handleLeftCircleTap(task),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 1, right: 11),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+                        child: isDone
+                            ? Container(
+                                key: const ValueKey('done'),
+                                width: 24,
+                                height: 24,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF10B981),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.check_rounded, size: 15, color: Colors.white),
+                              )
+                            : isInProgress
+                                ? Container(
+                                    key: const ValueKey('prog'),
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF6FF),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
+                                    ),
+                                    child: const Icon(Icons.timelapse_rounded, size: 15, color: Color(0xFF2563EB)),
+                                  )
+                                : Container(
+                                    key: const ValueKey('todo'),
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: const Color(0xFF94A3B8), width: 1.8),
+                                    ),
+                                  ),
+                      ),
+                    ),
                   ),
-              ],
-            ),
-          ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: isDone ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
+                            decoration: isDone ? TextDecoration.lineThrough : null,
+                          ),
+                          child: Text(task.title),
+                        ),
+                        if (task.description.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            task.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: isDone ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+              const SizedBox(height: 10),
+
+              // Bottom row: ClickUp/Linear Status Pill Trigger + Assignee Mini Avatar
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildCardStatusMenu(task),
+                  if (task.assignees.isNotEmpty) _buildAssigneeSummary(task),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAssigneeSummary(TaskModel task) {
+    final displayUser = task.primaryAssignee ?? task.assignees.first;
+    final initial = displayUser.fullName.isNotEmpty ? displayUser.fullName[0].toUpperCase() : '?';
+    final extraCount = task.assignees.length - 1;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: 10,
+          backgroundColor: const Color(0xFFDBEAFE),
+          child: Text(
+            initial,
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          extraCount > 0 ? '${displayUser.fullName} +$extraCount' : displayUser.fullName,
+          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: Color(0xFF475569)),
+        ),
+      ],
     );
   }
 
@@ -723,6 +853,32 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
   }
 
+  Widget _buildSheetChip(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openFilterSortSheet() async {
     List<User> members = [];
     try {
@@ -743,167 +899,143 @@ class _TaskListScreenState extends State<TaskListScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCBD5E1),
-                        borderRadius: BorderRadius.circular(2),
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 12,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCBD5E1),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Lọc & Sắp xếp công việc',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setModalState(() {
-                            tempPriority = null;
-                            tempAssigneeId = null;
-                            tempAssigneeName = null;
-                            tempSortBy = 'createdAt';
-                          });
-                        },
-                        child: const Text('Đặt lại', style: TextStyle(color: Color(0xFF2563EB))),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  const Text('Sắp xếp theo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Mới nhất'),
-                        selected: tempSortBy == 'createdAt',
-                        onSelected: (_) => setModalState(() => tempSortBy = 'createdAt'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Hạn hoàn thành'),
-                        selected: tempSortBy == 'dueDate',
-                        onSelected: (_) => setModalState(() => tempSortBy = 'dueDate'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Mức độ ưu tiên'),
-                        selected: tempSortBy == 'priority',
-                        onSelected: (_) => setModalState(() => tempSortBy = 'priority'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  const Text('Lọc theo mức độ ưu tiên', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Tất cả'),
-                        selected: tempPriority == null,
-                        onSelected: (_) => setModalState(() => tempPriority = null),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Cao'),
-                        selected: tempPriority == 'high',
-                        onSelected: (_) => setModalState(() => tempPriority = 'high'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Trung bình'),
-                        selected: tempPriority == 'medium',
-                        onSelected: (_) => setModalState(() => tempPriority = 'medium'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Thấp'),
-                        selected: tempPriority == 'low',
-                        onSelected: (_) => setModalState(() => tempPriority = 'low'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  const Text('Lọc theo người phụ trách', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                  const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: const Text('Tất cả'),
-                            selected: tempAssigneeId == null,
-                            onSelected: (_) => setModalState(() {
+                        const Text(
+                          'Lọc & Sắp xếp công việc',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              tempPriority = null;
                               tempAssigneeId = null;
                               tempAssigneeName = null;
-                            }),
-                          ),
-                        ),
-                        ...members.map(
-                          (u) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(u.fullName),
-                              selected: tempAssigneeId == u.id,
-                              onSelected: (_) => setModalState(() {
-                                tempAssigneeId = u.id;
-                                tempAssigneeName = u.fullName;
-                              }),
-                            ),
-                          ),
+                              tempSortBy = 'createdAt';
+                            });
+                          },
+                          child: const Text('Đặt lại', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        setState(() {
-                          _selectedPriority = tempPriority;
-                          _selectedAssigneeId = tempAssigneeId;
-                          _selectedAssigneeName = tempAssigneeName;
-                          _sortBy = tempSortBy;
-                        });
-                        _fetchTasks();
-                      },
-                      child: const Text('Áp dụng', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 12),
+
+                    const Text('Sắp xếp theo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildSheetChip('Mới nhất', tempSortBy == 'createdAt', () => setModalState(() => tempSortBy = 'createdAt')),
+                        _buildSheetChip('Hạn hoàn thành', tempSortBy == 'dueDate', () => setModalState(() => tempSortBy = 'dueDate')),
+                        _buildSheetChip('Mức độ ưu tiên', tempSortBy == 'priority', () => setModalState(() => tempSortBy = 'priority')),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 18),
+
+                    const Text('Lọc theo mức độ ưu tiên', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildSheetChip('Tất cả', tempPriority == null, () => setModalState(() => tempPriority = null)),
+                        _buildSheetChip('Cao', tempPriority == 'high', () => setModalState(() => tempPriority = 'high')),
+                        _buildSheetChip('Trung bình', tempPriority == 'medium', () => setModalState(() => tempPriority = 'medium')),
+                        _buildSheetChip('Thấp', tempPriority == 'low', () => setModalState(() => tempPriority = 'low')),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    const Text('Lọc theo người phụ trách', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _buildSheetChip(
+                              'Tất cả',
+                              tempAssigneeId == null,
+                              () => setModalState(() {
+                                tempAssigneeId = null;
+                                tempAssigneeName = null;
+                              }),
+                            ),
+                          ),
+                          ...members.map(
+                            (u) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _buildSheetChip(
+                                u.fullName,
+                                tempAssigneeId == u.id,
+                                () => setModalState(() {
+                                  tempAssigneeId = u.id;
+                                  tempAssigneeName = u.fullName;
+                                }),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _selectedPriority = tempPriority;
+                            _selectedAssigneeId = tempAssigneeId;
+                            _selectedAssigneeName = tempAssigneeName;
+                            _sortBy = tempSortBy;
+                          });
+                          _fetchTasks();
+                        },
+                        child: const Text('Áp dụng', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -915,74 +1047,55 @@ class _TaskListScreenState extends State<TaskListScreen> {
   Widget _buildCardStatusMenu(TaskModel task) {
     Color bg;
     Color fg;
+    Color border;
+    IconData icon;
     switch (task.status) {
       case 'in_progress':
-        bg = const Color(0xFFDBEAFE);
+        bg = const Color(0xFFEFF6FF);
         fg = const Color(0xFF1D4ED8);
+        border = const Color(0xFFBFDBFE);
+        icon = Icons.timelapse_rounded;
         break;
       case 'completed':
-        bg = const Color(0xFFD1FAE5);
+        bg = const Color(0xFFECFDF5);
         fg = const Color(0xFF059669);
+        border = const Color(0xFFA7F3D0);
+        icon = Icons.check_circle_rounded;
         break;
       case 'todo':
       default:
-        bg = const Color(0xFFF1F5F9);
+        bg = const Color(0xFFF8FAFC);
         fg = const Color(0xFF475569);
+        border = const Color(0xFFE2E8F0);
+        icon = Icons.radio_button_unchecked_rounded;
         break;
     }
 
-    return PopupMenuButton<String>(
-      tooltip: 'Chuyển trạng thái nhanh',
-      padding: EdgeInsets.zero,
-      onSelected: (newStatus) => _changeTaskStatus(task, newStatus),
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 'todo',
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => _openStatusWorkflowSheet(task),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: border),
+          ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.radio_button_unchecked, size: 16, color: Color(0xFF64748B)),
-              SizedBox(width: 8),
-              Text('Cần làm', style: TextStyle(fontSize: 13)),
+              Icon(icon, size: 13, color: fg),
+              const SizedBox(width: 5),
+              Text(
+                task.statusLabel,
+                style: TextStyle(fontSize: 11.5, color: fg, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 2),
+              Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: fg),
             ],
           ),
-        ),
-        const PopupMenuItem(
-          value: 'in_progress',
-          child: Row(
-            children: [
-              Icon(Icons.timelapse_rounded, size: 16, color: Color(0xFF2563EB)),
-              SizedBox(width: 8),
-              Text('Đang làm', style: TextStyle(fontSize: 13, color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'completed',
-          child: Row(
-            children: [
-              Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF10B981)),
-              SizedBox(width: 8),
-              Text('Hoàn thành', style: TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              task.statusLabel,
-              style: TextStyle(fontSize: 11, color: fg, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(width: 2),
-            Icon(Icons.arrow_drop_down, size: 14, color: fg),
-          ],
         ),
       ),
     );
