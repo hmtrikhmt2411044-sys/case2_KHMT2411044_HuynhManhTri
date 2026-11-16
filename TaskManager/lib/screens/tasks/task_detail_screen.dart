@@ -75,37 +75,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (!mounted) return;
       if (result['success'] == true) {
         _hasModified = true;
-        final label = newStatus == 'completed'
-            ? 'Hoàn thành'
-            : newStatus == 'in_progress'
-                ? 'Đang làm'
-                : 'Cần làm';
-        final color = newStatus == 'completed'
-            ? const Color(0xFF10B981)
-            : newStatus == 'in_progress'
-                ? const Color(0xFF2563EB)
-                : const Color(0xFF475569);
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              newStatus == 'completed'
-                  ? 'Đã hoàn thành công việc!'
-                  : 'Đã chuyển trạng thái sang "$label"',
-            ),
-            backgroundColor: color,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            duration: const Duration(seconds: 3),
-            action: allowUndo
-                ? SnackBarAction(
-                    label: 'Hoàn tác',
-                    textColor: Colors.white,
-                    onPressed: () => _updateStatus(previousStatus, allowUndo: false),
-                  )
-                : null,
-          ),
+        showStatusChangedSnackBar(
+          context,
+          newStatus: newStatus,
+          onUndo: allowUndo
+              ? () => _updateStatus(previousStatus, allowUndo: false)
+              : null,
         );
         _loadData();
       } else {
@@ -119,6 +94,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       }
     } on UnauthorizedException {
       // Đã xử lý chuyển về màn hình đăng nhập
+    } catch (e) {
+      _showErrorSnackBar(e);
     }
   }
 

@@ -118,37 +118,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
       final result = await TaskService.updateStatusWithResult(task.id, newStatus);
       if (!mounted) return;
       if (result['success'] == true) {
-        final label = newStatus == 'completed'
-            ? 'Hoàn thành'
-            : newStatus == 'in_progress'
-                ? 'Đang làm'
-                : 'Cần làm';
-        final color = newStatus == 'completed'
-            ? const Color(0xFF10B981)
-            : newStatus == 'in_progress'
-                ? const Color(0xFF2563EB)
-                : const Color(0xFF475569);
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              newStatus == 'completed'
-                  ? 'Đã hoàn thành "${task.title}"!'
-                  : 'Đã chuyển sang "$label"',
-            ),
-            backgroundColor: color,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            duration: const Duration(seconds: 3),
-            action: allowUndo
-                ? SnackBarAction(
-                    label: 'Hoàn tác',
-                    textColor: Colors.white,
-                    onPressed: () => _changeTaskStatus(task, previousStatus, allowUndo: false),
-                  )
-                : null,
-          ),
+        showStatusChangedSnackBar(
+          context,
+          newStatus: newStatus,
+          taskTitle: task.title,
+          onUndo: allowUndo
+              ? () => _changeTaskStatus(task, previousStatus, allowUndo: false)
+              : null,
         );
         _fetchTasks();
       } else {

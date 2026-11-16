@@ -68,5 +68,38 @@ void main() {
 
       expect(picked, equals('in_progress'));
     });
+
+    testWidgets('showStatusChangedSnackBar auto-dismisses even when undo action is present', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => ElevatedButton(
+                onPressed: () {
+                  showStatusChangedSnackBar(
+                    ctx,
+                    newStatus: 'completed',
+                    taskTitle: 'SA',
+                    onUndo: () {},
+                  );
+                },
+                child: const Text('Complete'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Complete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Đã hoàn thành "SA"!'), findsOneWidget);
+      expect(find.text('Hoàn tác'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Đã hoàn thành "SA"!'), findsNothing);
+    });
   });
 }

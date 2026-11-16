@@ -14,6 +14,50 @@ Future<String?> showTaskStatusSheet(BuildContext context, TaskModel task) {
   );
 }
 
+/// Hiển thị SnackBar thông báo đổi trạng thái kèm nút Hoàn tác và tự ẩn sau [duration].
+void showStatusChangedSnackBar(
+  BuildContext context, {
+  required String newStatus,
+  String? taskTitle,
+  VoidCallback? onUndo,
+  Duration duration = const Duration(seconds: 3),
+}) {
+  final label = switch (newStatus) {
+    'completed' => 'Hoàn thành',
+    'in_progress' => 'Đang làm',
+    _ => 'Cần làm',
+  };
+  final color = switch (newStatus) {
+    'completed' => const Color(0xFF10B981),
+    'in_progress' => const Color(0xFF2563EB),
+    _ => const Color(0xFF475569),
+  };
+  final message = newStatus == 'completed'
+      ? (taskTitle != null ? 'Đã hoàn thành "$taskTitle"!' : 'Đã hoàn thành công việc!')
+      : 'Đã chuyển sang "$label"';
+
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(message),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      duration: duration,
+      // Flutter mặc định persist = (action != null), cần ép persist: false để tự ẩn khi hết duration.
+      persist: false,
+      action: onUndo != null
+          ? SnackBarAction(
+              label: 'Hoàn tác',
+              textColor: Colors.white,
+              onPressed: onUndo,
+            )
+          : null,
+    ),
+  );
+}
+
 class _TaskStatusSheet extends StatelessWidget {
   final TaskModel task;
 
