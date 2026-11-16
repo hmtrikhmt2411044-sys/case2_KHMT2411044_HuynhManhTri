@@ -8,15 +8,17 @@ const activityStore = require('../services/activityStore');
 exports.getTasks = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { type, status, priority, search, sortBy } = req.query;
+    const { type, scope, status, priority, assigneeId, search, q, sortBy, order } = req.query;
 
     const tasks = await taskStore.getTasks({
       userId,
-      type: type || 'all',
+      type: type || scope || 'all',
       status,
       priority,
-      search,
+      assigneeId,
+      search: search || q,
       sortBy: sortBy || 'createdAt',
+      order,
     });
 
     return res.status(200).json({
@@ -173,6 +175,59 @@ exports.updateTask = async (req, res) => {
     const updated = await taskStore.updateTask(id, filteredUpdates);
 
     await activityStore.logActivity({ taskId: id, userId, action: 'updated', details: filteredUpdates });
+
+    // Gửi thông báo & email khi hạn hoàn thành hoặc thông tin quan trọng thay đổi
+    const changedLabels = [];
+    if (filteredUpdates.dueDate !== undefined && String(filteredUpdates.dueDate || '') !== String(task.dueDate || '')) {
+      changedLabels.push('Hạn hoàn thành');
+    }
+    if (filteredUpdates.priority !== undefined && filteredUpdates.priority !== task.priority) {
+      changedLabels.push('Mức độ ưu tiên');
+    }
+    if (filteredUpdates.title !== undefined && filteredUpdates.title !== task.title) {
+      changedLabels.push('Tiêu đề');
+    }
+    if (filteredUpdates.status !== undefined && filteredUpdates.status !== task.status) {
+      changedLabels.push('Trạng thái');
+    }
+
+    if (changedLabels.length > 0 && updated) {
+      try {
+        const recipients = new Set();
+        const creatorId = String(updated.createdBy?._id || updated.createdBy);
+        if (creatorId && creatorId !== String(userId)) recipients.add(creatorId);
+        const taskAssignees = updated.assigneeIds || [];
+        if (Array.isArray(taskAssignees)) {
+          taskAssignees.forEach((a) => {
+            const aId = String(a._id || a.id || a);
+            if (aId !== String(userId)) recipients.add(aId);
+          });
+        }
+        for (const rId of recipients) {
+          const targetU = await userStore.findById(rId);
+          if (targetU) {
+            await notificationService.createNotification({
+              userId: rId,
+              taskId: updated._id,
+              type: 'updated',
+              title: 'Công việc có thay đổi quan trọng',
+              message: `${req.user.fullName} vừa cập nhật (${changedLabels.join(', ')}) công việc "${updated.title}"`,
+            });
+            if (targetU.email) {
+              await emailService.sendTaskChangeEmail({
+                toEmail: targetU.email,
+                recipientName: targetU.fullName,
+                task: updated,
+                updaterName: req.user.fullName,
+                changedFields: changedLabels,
+              });
+            }
+          }
+        }
+      } catch (notifErr) {
+        console.warn('[Update Notif Error]', notifErr.message);
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -577,4 +632,87 @@ exports.getTaskActivities = async (req, res) => {
       message: 'Lỗi khi lấy lịch sử hoạt động: ' + error.message,
     });
   }
+};
+
+// 12. Lấy danh sách người được giao việc (GET /tasks/:id/assignees)
+exports.getTaskAssignees = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+    const permission = await taskStore.checkPermission(id, req.user._id);
+    if (!permission && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền truy cập công việc này' });
+    }
+    return res.status(200).json({
+      success: true,
+      data: {
+        assignees: task.assigneeIds || [],
+        primaryAssignee: task.primaryAssigneeId || null,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Lỗi lấy danh sách người được giao: ' + error.message });
+  }
+};
+
+// 13. Cập nhật người phụ trách chính (PATCH /tasks/:id/assignees/:userId)
+exports.setPrimaryAssignee = async (req, res) => {
+  try {
+    const { id, userId: targetUserId } = req.params;
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+    const permission = await taskStore.checkPermission(id, req.user._id);
+    if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền thay đổi người phụ trách chính' });
+    }
+    const currentAssignees = (task.assigneeIds || []).map((a) => String(a._id || a));
+    if (!currentAssignees.includes(String(targetUserId))) {
+      currentAssignees.push(String(targetUserId));
+    }
+    const updated = await taskStore.assignTask(id, {
+      assigneeIds: currentAssignees,
+      primaryAssigneeId: targetUserId,
+    });
+    return res.status(200).json({ success: true, message: 'Đã cập nhật người phụ trách chính', data: updated });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Lỗi cập nhật người phụ trách chính: ' + error.message });
+  }
+};
+
+// 14. Hủy giao việc cho một người (DELETE /tasks/:id/assignees/:userId)
+exports.removeAssignee = async (req, res) => {
+  try {
+    const { id, userId: targetUserId } = req.params;
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+    const permission = await taskStore.checkPermission(id, req.user._id);
+    if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền hủy giao việc' });
+    }
+    const remaining = (task.assigneeIds || [])
+      .map((a) => String(a._id || a))
+      .filter((aId) => aId !== String(targetUserId));
+    const currentPrimary = task.primaryAssigneeId ? String(task.primaryAssigneeId._id || task.primaryAssigneeId) : null;
+    const nextPrimary = currentPrimary === String(targetUserId) ? (remaining[0] || null) : currentPrimary;
+    const updated = await taskStore.assignTask(id, {
+      assigneeIds: remaining,
+      primaryAssigneeId: nextPrimary,
+    });
+    return res.status(200).json({ success: true, message: 'Đã hủy giao việc cho thành viên', data: updated });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Lỗi hủy giao việc: ' + error.message });
+  }
+};
+
+// 15. Thay đổi quyền chia sẻ (PATCH /tasks/:id/shares/:targetUserId)
+exports.updateSharePermission = async (req, res) => {
+  req.body = { ...req.body, targetUserId: req.params.targetUserId };
+  return exports.shareTask(req, res);
 };

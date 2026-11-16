@@ -11,12 +11,14 @@ class TaskService {
     String type = 'all', // 'all', 'my_tasks', 'assigned', 'shared'
     String? status,
     String? priority,
+    String? assigneeId,
     String? search,
     String? sortBy,
   }) async {
     final queryParams = <String, String>{'type': type};
     if (status != null && status.isNotEmpty) queryParams['status'] = status;
     if (priority != null && priority.isNotEmpty) queryParams['priority'] = priority;
+    if (assigneeId != null && assigneeId.isNotEmpty) queryParams['assigneeId'] = assigneeId;
     if (search != null && search.trim().isNotEmpty) queryParams['search'] = search.trim();
     if (sortBy != null && sortBy.isNotEmpty) queryParams['sortBy'] = sortBy;
 
@@ -91,14 +93,20 @@ class TaskService {
     return null;
   }
 
+  // Cập nhật trạng thái công việc (trả về kết quả kèm thông báo từ backend)
+  static Future<Map<String, dynamic>> updateStatusWithResult(String id, String status) async {
+    final res = await ApiClient.patch('/tasks/$id/status', body: {'status': status}, requireAuth: true);
+    final body = jsonDecode(res.body);
+    return {
+      'success': res.statusCode == 200 && body['success'] == true,
+      'message': body['message'],
+    };
+  }
+
   // Cập nhật trạng thái công việc
   static Future<bool> updateStatus(String id, String status) async {
-    final res = await ApiClient.patch('/tasks/$id/status', body: {'status': status}, requireAuth: true);
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      return body['success'] == true;
-    }
-    return false;
+    final result = await updateStatusWithResult(id, status);
+    return result['success'] == true;
   }
 
   // Xóa công việc

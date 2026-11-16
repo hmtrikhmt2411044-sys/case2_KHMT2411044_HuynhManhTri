@@ -294,6 +294,62 @@ module.exports = {
     });
   },
 
+  // 3b. Gửi email khi hạn hoàn thành hoặc thông tin quan trọng thay đổi
+  async sendTaskChangeEmail({ toEmail, recipientName, task, updaterName, changedFields = [] }) {
+    if (!toEmail) return null;
+    const fieldsText = changedFields.length > 0 ? changedFields.join(', ') : 'Thông tin công việc';
+    const subject = `[Thay đổi thông tin] Công việc "${task.title}" vừa được cập nhật`;
+    const html = buildEmailHtml({
+      title: 'Thông tin quan trọng của công việc đã thay đổi',
+      subtitle: `Xin chào <strong>${recipientName || 'bạn'}</strong>, <strong>${updaterName || 'Quản lý'}</strong> vừa cập nhật (${fieldsText}).`,
+      taskTitle: task.title,
+      details: {
+        'Nội dung thay đổi': fieldsText,
+        'Hạn hoàn thành': task.dueDate ? new Date(task.dueDate).toLocaleDateString('vi-VN') : 'Không giới hạn',
+        'Mức độ ưu tiên': task.priority === 'high' ? 'Cao' : task.priority === 'low' ? 'Thấp' : 'Trung bình',
+        'Người cập nhật': updaterName || 'Thành viên',
+      },
+      callToActionText: 'Mở ứng dụng để xem chi tiết',
+      accentColor: '#F59E0B',
+    });
+
+    return await sendEmail({
+      toEmail,
+      subject,
+      html,
+      text: `Công việc "${task.title}" vừa thay đổi (${fieldsText}) bởi ${updaterName}`,
+      taskId: task._id || task.id,
+      eventType: 'updated',
+    });
+  },
+
+  // 3c. Gửi email nhắc nhở sắp đến hạn (trước 24h)
+  async sendDeadlineReminderEmail({ toEmail, recipientName, task, hoursLeft }) {
+    if (!toEmail) return null;
+    const subject = `[Nhắc hạn] Công việc "${task.title}" sắp đến hạn hoàn thành`;
+    const html = buildEmailHtml({
+      title: 'Nhắc nhở công việc sắp đến hạn',
+      subtitle: `Xin chào <strong>${recipientName || 'bạn'}</strong>, công việc của bạn còn khoảng <strong>${Math.max(1, Math.round(hoursLeft))} giờ</strong> nữa là đến hạn.`,
+      taskTitle: task.title,
+      details: {
+        'Hạn hoàn thành': task.dueDate ? new Date(task.dueDate).toLocaleString('vi-VN') : '',
+        'Mức độ ưu tiên': task.priority === 'high' ? 'Cao' : task.priority === 'low' ? 'Thấp' : 'Trung bình',
+        'Trạng thái hiện tại': task.status === 'in_progress' ? 'Đang làm' : 'Cần làm',
+      },
+      callToActionText: 'Mở Task Manager để cập nhật tiến độ',
+      accentColor: '#EF4444',
+    });
+
+    return await sendEmail({
+      toEmail,
+      subject,
+      html,
+      text: `Nhắc nhở: Công việc "${task.title}" sắp đến hạn hoàn thành!`,
+      taskId: task._id || task.id,
+      eventType: 'deadline_approaching',
+    });
+  },
+
   // 4. Lấy danh sách email log theo taskId
   async getEmailLogsByTaskId(taskId) {
     const taskIdStr = String(taskId);

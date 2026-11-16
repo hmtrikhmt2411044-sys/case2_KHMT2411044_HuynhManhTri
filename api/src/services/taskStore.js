@@ -69,13 +69,35 @@ const populateTask = async (task) => {
   return copy;
 };
 
+const PRIORITY_WEIGHT = { high: 3, medium: 2, low: 1 };
+
+const sortTasksInMemory = (list, sortBy = 'createdAt', order = 'desc') => {
+  const dir = order === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    if (sortBy === 'dueDate') {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      const cmp = new Date(a.dueDate) - new Date(b.dueDate);
+      return order === 'desc' ? -cmp : cmp;
+    }
+    if (sortBy === 'priority') {
+      const wa = PRIORITY_WEIGHT[a.priority] || 2;
+      const wb = PRIORITY_WEIGHT[b.priority] || 2;
+      return (wa - wb) * dir;
+    }
+    return (new Date(a.createdAt) - new Date(b.createdAt)) * dir;
+  });
+};
+
 module.exports = {
   // Lấy danh sách công việc
-  async getTasks({ userId, type = 'all', status, priority, search, sortBy = 'createdAt' }) {
+  async getTasks({ userId, type = 'all', status, priority, assigneeId, search, sortBy = 'createdAt', order }) {
     const userIdStr = String(userId);
+    const effectiveOrder = order || (sortBy === 'dueDate' ? 'asc' : 'desc');
     if (isMongooseConnected()) {
       let filter = {};
-      if (type === 'my_tasks') {
+      if (type === 'my_tasks' || type === 'created') {
         filter.createdBy = userId;
       } else if (type === 'assigned') {
         filter.assigneeIds = userId;
@@ -96,21 +118,17 @@ module.exports = {
 
       if (status) filter.status = status;
       if (priority) filter.priority = priority;
+      if (assigneeId) filter.assigneeIds = assigneeId;
       if (search) {
         filter.title = { $regex: search, $options: 'i' };
       }
 
-      let sortOption = { createdAt: -1 };
-      if (sortBy === 'dueDate') sortOption = { dueDate: 1 };
-      if (sortBy === 'priority') sortOption = { priority: -1 };
-
       const tasks = await Task.find(filter)
         .populate('createdBy', 'fullName email')
         .populate('assigneeIds', 'fullName email')
-        .populate('primaryAssigneeId', 'fullName email')
-        .sort(sortOption);
+        .populate('primaryAssigneeId', 'fullName email');
 
-      return tasks;
+      return sortTasksInMemory(tasks, sortBy, effectiveOrder);
     }
 
     // Local fallback
@@ -126,19 +144,24 @@ module.exports = {
         t.assigneeIds.some((a) => String(a?._id || a) === userIdStr);
       const isShared = myShareTaskIds.includes(String(t._id));
 
-      if (type === 'my_tasks' && !isOwner) return false;
+      if ((type === 'my_tasks' || type === 'created') && !isOwner) return false;
       if (type === 'assigned' && !isAssignee) return false;
       if (type === 'shared' && !isShared) return false;
       if (type === 'all' && !isOwner && !isAssignee && !isShared) return false;
 
       if (status && t.status !== status) return false;
       if (priority && t.priority !== priority) return false;
+      if (assigneeId) {
+        const hasAssignee = Array.isArray(t.assigneeIds) &&
+          t.assigneeIds.some((a) => String(a?._id || a) === String(assigneeId));
+        if (!hasAssignee) return false;
+      }
       if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
 
       return true;
     });
 
-    filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    filtered = sortTasksInMemory(filtered, sortBy, effectiveOrder);
 
     const populatedList = [];
     for (const t of filtered) {

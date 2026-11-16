@@ -7,5 +7,7 @@ router.use(authMiddleware);
 
 // Lấy / tìm kiếm danh sách thành viên
 router.get('/', userController.getUsers);
+router.get('/search', userController.getUsers);
+router.get('/:id', userController.getUserById);
 
 module.exports = router;

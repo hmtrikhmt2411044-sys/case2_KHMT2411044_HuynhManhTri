@@ -16,10 +16,14 @@ router.patch('/:id/status', taskController.updateStatus);
 router.delete('/:id', taskController.deleteTask);
 
 // Giao việc & Chia sẻ (Nhóm chức năng C)
+router.get('/:id/assignees', taskController.getTaskAssignees);
 router.post('/:id/assign', taskController.assignTask);
 router.post('/:id/assignees', taskController.assignTask);
+router.patch('/:id/assignees/:userId', taskController.setPrimaryAssignee);
+router.delete('/:id/assignees/:userId', taskController.removeAssignee);
 router.post('/:id/share', taskController.shareTask);
 router.post('/:id/shares', taskController.shareTask);
+router.patch('/:id/shares/:targetUserId', taskController.updateSharePermission);
 router.delete('/:id/share/:targetUserId', taskController.revokeShare);
 router.delete('/:id/shares/:targetUserId', taskController.revokeShare);
 router.get('/:id/shares', taskController.getTaskShares);
