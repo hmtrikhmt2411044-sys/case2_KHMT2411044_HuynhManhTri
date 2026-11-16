@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/user.dart';
+import '../../services/api_client.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
 
@@ -139,6 +140,9 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
           );
         }
       }
+    } on UnauthorizedException {
+      if (mounted) setState(() => _isLoading = false);
+      return;
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -526,12 +530,28 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
                             icon: const Icon(Icons.refresh, size: 20, color: Color(0xFF2563EB)),
                             tooltip: 'Làm mới danh sách',
                             onPressed: () async {
+                              final messenger = ScaffoldMessenger.of(context);
                               setModalState(() => isRefreshing = true);
-                              final users = await UserService.searchUsers();
-                              if (mounted) {
-                                setState(() => _availableUsers = users);
+                              try {
+                                final users = await UserService.searchUsers();
+                                if (mounted) {
+                                  setState(() => _availableUsers = users);
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('Không thể tải lại thành viên: $e'),
+                                      backgroundColor: const Color(0xFFEF4444),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (context.mounted) {
+                                  setModalState(() => isRefreshing = false);
+                                }
                               }
-                              setModalState(() => isRefreshing = false);
                             },
                           ),
                       ],

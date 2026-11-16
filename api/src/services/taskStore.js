@@ -174,6 +174,7 @@ module.exports = {
   async getTaskById(taskId) {
     const idStr = String(taskId);
     if (isMongooseConnected()) {
+      if (!mongoose.Types.ObjectId.isValid(idStr)) return null;
       return await Task.findById(idStr)
         .populate('createdBy', 'fullName email')
         .populate('assigneeIds', 'fullName email')
@@ -187,19 +188,29 @@ module.exports = {
 
   // Tạo công việc mới
   async createTask({ title, description, createdBy, assigneeIds = [], primaryAssigneeId = null, startDate, dueDate, priority, status }) {
+    const normalizedAssignees = Array.isArray(assigneeIds) ? assigneeIds.map(String) : [];
+    const primaryStr = primaryAssigneeId ? String(primaryAssigneeId) : null;
+    if (primaryStr && !normalizedAssignees.includes(primaryStr)) {
+      normalizedAssignees.push(primaryStr);
+    }
     if (isMongooseConnected()) {
       const newTask = await Task.create({
         title,
         description,
         createdBy,
-        assigneeIds,
-        primaryAssigneeId,
+        assigneeIds: normalizedAssignees,
+        primaryAssigneeId: primaryStr,
         startDate,
         dueDate,
         priority: priority || 'medium',
         status: status || 'todo',
       });
-      return await this.getTaskById(newTask._id);
+      await newTask.populate([
+        { path: 'createdBy', select: 'fullName email' },
+        { path: 'assigneeIds', select: 'fullName email' },
+        { path: 'primaryAssigneeId', select: 'fullName email' },
+      ]);
+      return newTask;
     }
     const tasks = readTasks();
     const newTask = {
@@ -207,8 +218,8 @@ module.exports = {
       title,
       description: description || '',
       createdBy: String(createdBy),
-      assigneeIds: Array.isArray(assigneeIds) ? assigneeIds.map(String) : [],
-      primaryAssigneeId: primaryAssigneeId ? String(primaryAssigneeId) : null,
+      assigneeIds: normalizedAssignees,
+      primaryAssigneeId: primaryStr,
       startDate: startDate || null,
       dueDate: dueDate || null,
       priority: priority || 'medium',
@@ -225,8 +236,11 @@ module.exports = {
   async updateTask(taskId, updates) {
     const idStr = String(taskId);
     if (isMongooseConnected()) {
-      await Task.findByIdAndUpdate(idStr, updates, { new: true, runValidators: true });
-      return await this.getTaskById(idStr);
+      if (!mongoose.Types.ObjectId.isValid(idStr)) return null;
+      return await Task.findByIdAndUpdate(idStr, updates, { returnDocument: 'after', runValidators: true })
+        .populate('createdBy', 'fullName email')
+        .populate('assigneeIds', 'fullName email')
+        .populate('primaryAssigneeId', 'fullName email');
     }
     const tasks = readTasks();
     const idx = tasks.findIndex((t) => String(t._id) === idStr);
@@ -276,7 +290,7 @@ module.exports = {
       const share = await TaskShare.findOneAndUpdate(
         { taskId: taskIdStr, userId: userIdStr },
         { permission, sharedBy },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
       ).populate('userId', 'fullName email');
       return share;
     }
@@ -344,11 +358,11 @@ module.exports = {
 
   // Kiểm tra quyền của 1 user trên 1 task
   // Trả về: 'owner' | 'editor' | 'viewer' | 'assignee' | null
-  async checkPermission(taskId, userId) {
+  async checkPermission(taskId, userId, existingTask = null) {
     const taskIdStr = String(taskId);
     const userIdStr = String(userId);
 
-    const task = await this.getTaskById(taskIdStr);
+    const task = existingTask || (await this.getTaskById(taskIdStr));
     if (!task) return null;
 
     const ownerId = String(task.createdBy?._id || task.createdBy);

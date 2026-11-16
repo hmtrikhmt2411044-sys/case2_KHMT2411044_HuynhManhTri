@@ -119,10 +119,11 @@ module.exports = {
     const userIdStr = String(userId);
 
     if (isMongooseConnected()) {
+      if (!mongoose.Types.ObjectId.isValid(notifIdStr)) return null;
       return await Notification.findOneAndUpdate(
         { _id: notifIdStr, userId: userIdStr },
         { isRead: true },
-        { new: true }
+        { returnDocument: 'after' }
       );
     }
 

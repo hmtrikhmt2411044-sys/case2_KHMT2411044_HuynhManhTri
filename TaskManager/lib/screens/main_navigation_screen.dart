@@ -13,6 +13,7 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late int _currentIndex;
+  int _statsRefreshTick = 0;
 
   @override
   void initState() {
@@ -21,7 +22,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _onTabTapped(int index) {
-    if (index != _currentIndex) {
+    if (index == 1) {
+      setState(() {
+        _currentIndex = index;
+        _statsRefreshTick++;
+      });
+    } else if (index != _currentIndex) {
       setState(() {
         _currentIndex = index;
       });
@@ -39,7 +45,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             isTab: true,
             onSwitchTab: _onTabTapped,
           ),
-          const StatisticsScreen(isTab: true),
+          StatisticsScreen(isTab: true, refreshTick: _statsRefreshTick),
           const ProfileScreen(isTab: true),
         ],
       ),

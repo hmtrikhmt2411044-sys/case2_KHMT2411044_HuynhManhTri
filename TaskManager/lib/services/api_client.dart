@@ -54,7 +54,7 @@ class ApiClient {
   static Future<http.Response> get(String endpoint, {bool requireAuth = false}) async {
     final uri = Uri.parse('${AppConstants.baseUrl}$endpoint');
     final headers = await _getHeaders(requireAuth: requireAuth);
-    final res = await http.get(uri, headers: headers).timeout(const Duration(seconds: 5));
+    final res = await http.get(uri, headers: headers).timeout(const Duration(seconds: 12));
     return _processResponse(res, requireAuth);
   }
 
@@ -69,7 +69,7 @@ class ApiClient {
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
-    ).timeout(const Duration(seconds: 8));
+    ).timeout(const Duration(seconds: 15));
     return _processResponse(res, requireAuth);
   }
 
@@ -84,7 +84,7 @@ class ApiClient {
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
-    ).timeout(const Duration(seconds: 8));
+    ).timeout(const Duration(seconds: 15));
     return _processResponse(res, requireAuth);
   }
 
@@ -99,14 +99,14 @@ class ApiClient {
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
-    ).timeout(const Duration(seconds: 8));
+    ).timeout(const Duration(seconds: 15));
     return _processResponse(res, requireAuth);
   }
 
   static Future<http.Response> delete(String endpoint, {bool requireAuth = false}) async {
     final uri = Uri.parse('${AppConstants.baseUrl}$endpoint');
     final headers = await _getHeaders(requireAuth: requireAuth);
-    final res = await http.delete(uri, headers: headers).timeout(const Duration(seconds: 5));
+    final res = await http.delete(uri, headers: headers).timeout(const Duration(seconds: 12));
     return _processResponse(res, requireAuth);
   }
 }

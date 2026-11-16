@@ -99,8 +99,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
         setState(() {
           _allTasks = tasks;
           _hasConnectionError = false;
-          _loadUnreadNotifications();
         });
+        _loadUnreadNotifications();
       }
     } on UnauthorizedException {
       // ApiClient tự động chuyển về màn hình đăng nhập
@@ -204,6 +204,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        automaticallyImplyLeading: !widget.isTab,
         titleSpacing: 16,
         title: Row(
           children: [

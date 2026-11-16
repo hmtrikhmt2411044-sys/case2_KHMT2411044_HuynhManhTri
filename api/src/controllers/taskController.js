@@ -4,6 +4,55 @@ const emailService = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 const activityStore = require('../services/activityStore');
 
+// Chạy tác vụ gửi email ở chế độ nền (non-blocking) để HTTP API phản hồi tức thì dưới 0.5s
+const runBackgroundTask = (fn, tag = 'BackgroundTask') => {
+  Promise.resolve()
+    .then(fn)
+    .catch((err) => console.warn(`[${tag}]`, err?.message || err));
+};
+
+// Gom tập người nhận duy nhất (loại trừ người thực hiện thao tác)
+const collectOtherRecipients = (task, actorUserId) => {
+  const actorId = String(actorUserId);
+  const recipients = new Set();
+  const creatorId = String(task.createdBy?._id || task.createdBy || '');
+  if (creatorId && creatorId !== actorId) recipients.add(creatorId);
+  const taskAssignees = task.assigneeIds || task.assignees || [];
+  if (Array.isArray(taskAssignees)) {
+    taskAssignees.forEach((a) => {
+      const aId = String(a?._id || a?.id || a || '');
+      if (aId && aId !== actorId) recipients.add(aId);
+    });
+  }
+  return Array.from(recipients);
+};
+
+// Lấy danh sách user object (tái sử dụng field đã populate để bỏ qua truy vấn Atlas lặp lại)
+const resolveOtherRecipientUsers = async (task, actorUserId) => {
+  const actorId = String(actorUserId);
+  const byId = new Map();
+  const missingIds = new Set();
+  const candidates = [
+    task.createdBy,
+    ...(Array.isArray(task.assigneeIds || task.assignees) ? task.assigneeIds || task.assignees : []),
+  ];
+  for (const item of candidates) {
+    if (!item) continue;
+    const id = String(item._id || item.id || item);
+    if (!id || id === actorId || byId.has(id)) continue;
+    if (typeof item === 'object' && item.email) {
+      byId.set(id, item);
+    } else {
+      missingIds.add(id);
+    }
+  }
+  if (missingIds.size > 0) {
+    const fetched = await Promise.all(Array.from(missingIds).map((id) => userStore.findById(id)));
+    fetched.filter(Boolean).forEach((u) => byId.set(String(u._id || u.id), u));
+  }
+  return Array.from(byId.values());
+};
+
 // 1. Lấy danh sách công việc của người dùng
 exports.getTasks = async (req, res) => {
   try {
@@ -50,7 +99,7 @@ exports.getTaskById = async (req, res) => {
     }
 
     // Kiểm tra quyền xem
-    const permission = await taskStore.checkPermission(id, userId);
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -95,33 +144,37 @@ exports.createTask = async (req, res) => {
       status: status || 'todo',
     });
 
-    // Tự động gửi thông báo trong ứng dụng & email cho các thành viên được giao
+    // Tự động gửi thông báo trong ứng dụng & gửi email ở chế độ nền cho các thành viên được giao
     const newAssignees = newTask.assigneeIds || newTask.assignees || [];
-    if (newAssignees && newAssignees.length > 0) {
-      newAssignees.forEach(async (u) => {
-        const uId = String(u._id || u.id);
-        if (uId !== String(req.user._id)) {
+    if (Array.isArray(newAssignees) && newAssignees.length > 0) {
+      const targetUsers = newAssignees.filter((u) => String(u._id || u.id) !== String(req.user._id));
+      await Promise.allSettled(
+        targetUsers.map((u) => {
+          const uId = String(u._id || u.id);
           const isPrimary = String(newTask.primaryAssigneeId?._id || newTask.primaryAssigneeId) === uId;
-          try {
-            await notificationService.createNotification({
-              userId: uId,
-              taskId: newTask._id,
-              type: 'assigned',
-              title: isPrimary ? 'Bạn là người phụ trách chính ⭐' : 'Công việc mới được giao',
-              message: `${req.user.fullName} vừa giao cho bạn công việc: "${newTask.title}"`,
-            });
-            if (u.email) {
-              await emailService.sendAssignEmail({
+          return notificationService.createNotification({
+            userId: uId,
+            taskId: newTask._id,
+            type: 'assigned',
+            title: isPrimary ? 'Bạn là người phụ trách chính ⭐' : 'Công việc mới được giao',
+            message: `${req.user.fullName} vừa giao cho bạn công việc: "${newTask.title}"`,
+          });
+        })
+      );
+      targetUsers.forEach((u) => {
+        if (u.email) {
+          const isPrimary = String(newTask.primaryAssigneeId?._id || newTask.primaryAssigneeId) === String(u._id || u.id);
+          runBackgroundTask(
+            () =>
+              emailService.sendAssignEmail({
                 toEmail: u.email,
                 recipientName: u.fullName,
                 task: newTask,
                 assignerName: req.user.fullName,
                 isPrimary,
-              });
-            }
-          } catch (notifErr) {
-            console.warn('[Assign Notif Error]', notifErr.message);
-          }
+              }),
+            'CreateAssignEmail'
+          );
         }
       });
     }
@@ -155,7 +208,7 @@ exports.updateTask = async (req, res) => {
     }
 
     // Kiểm tra quyền: Owner, Editor hoặc Admin
-    const permission = await taskStore.checkPermission(id, userId);
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -174,7 +227,7 @@ exports.updateTask = async (req, res) => {
 
     const updated = await taskStore.updateTask(id, filteredUpdates);
 
-    await activityStore.logActivity({ taskId: id, userId, action: 'updated', details: filteredUpdates });
+    const activityPromise = activityStore.logActivity({ taskId: id, userId, action: 'updated', details: filteredUpdates });
 
     // Gửi thông báo & email khi hạn hoàn thành hoặc thông tin quan trọng thay đổi
     const changedLabels = [];
@@ -193,40 +246,40 @@ exports.updateTask = async (req, res) => {
 
     if (changedLabels.length > 0 && updated) {
       try {
-        const recipients = new Set();
-        const creatorId = String(updated.createdBy?._id || updated.createdBy);
-        if (creatorId && creatorId !== String(userId)) recipients.add(creatorId);
-        const taskAssignees = updated.assigneeIds || [];
-        if (Array.isArray(taskAssignees)) {
-          taskAssignees.forEach((a) => {
-            const aId = String(a._id || a.id || a);
-            if (aId !== String(userId)) recipients.add(aId);
-          });
-        }
-        for (const rId of recipients) {
-          const targetU = await userStore.findById(rId);
-          if (targetU) {
-            await notificationService.createNotification({
-              userId: rId,
+        const users = await resolveOtherRecipientUsers(updated, userId);
+        await Promise.allSettled([
+          ...users.map((targetU) =>
+            notificationService.createNotification({
+              userId: targetU._id,
               taskId: updated._id,
               type: 'updated',
               title: 'Công việc có thay đổi quan trọng',
               message: `${req.user.fullName} vừa cập nhật (${changedLabels.join(', ')}) công việc "${updated.title}"`,
-            });
-            if (targetU.email) {
-              await emailService.sendTaskChangeEmail({
-                toEmail: targetU.email,
-                recipientName: targetU.fullName,
-                task: updated,
-                updaterName: req.user.fullName,
-                changedFields: changedLabels,
-              });
-            }
+            })
+          ),
+          activityPromise,
+        ]);
+        users.forEach((targetU) => {
+          if (targetU.email) {
+            runBackgroundTask(
+              () =>
+                emailService.sendTaskChangeEmail({
+                  toEmail: targetU.email,
+                  recipientName: targetU.fullName,
+                  task: updated,
+                  updaterName: req.user.fullName,
+                  changedFields: changedLabels,
+                }),
+              'TaskChangeEmail'
+            );
           }
-        }
+        });
       } catch (notifErr) {
         console.warn('[Update Notif Error]', notifErr.message);
+        await Promise.allSettled([activityPromise]);
       }
+    } else {
+      await Promise.allSettled([activityPromise]);
     }
 
     return res.status(200).json({
@@ -256,7 +309,12 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    const permission = await taskStore.checkPermission(id, userId);
+    const task = await taskStore.getTaskById(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
+    }
+
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -271,51 +329,50 @@ exports.updateStatus = async (req, res) => {
     }
 
     const updated = await taskStore.updateStatus(id, status);
+    const activityPromise = activityStore.logActivity({ taskId: id, userId, action: 'status_changed', details: { status } });
 
-    // Gửi thông báo và email cập nhật trạng thái
-    try {
-      const task = updated;
-      const recipients = new Set();
-      const creatorId = String(task.createdBy?._id || task.createdBy);
-      if (creatorId && creatorId !== String(userId)) {
-        recipients.add(creatorId);
-      }
-      const taskAssignees = task.assigneeIds || task.assignees || [];
-      if (Array.isArray(taskAssignees)) {
-        taskAssignees.forEach((a) => {
-          const aId = String(a._id || a.id);
-          if (aId !== String(userId)) recipients.add(aId);
-        });
-      }
+    // Gửi thông báo tức thì và gửi email cập nhật trạng thái ở chế độ nền (không làm treo request Flutter)
+    if (updated) {
+      try {
+        const users = await resolveOtherRecipientUsers(updated, userId);
+        const isCompleted = status === 'completed';
+        const statusText = status === 'completed' ? 'Hoàn thành' : status === 'in_progress' ? 'Đang làm' : 'Cần làm';
 
-      for (const rId of recipients) {
-        const targetU = await userStore.findById(rId);
-        if (targetU) {
-          const isCompleted = status === 'completed';
-          const statusText = status === 'completed' ? 'Hoàn thành' : status === 'in_progress' ? 'Đang làm' : 'Cần làm';
-          await notificationService.createNotification({
-            userId: rId,
-            taskId: task._id,
-            type: isCompleted ? 'completed' : 'status_changed',
-            title: isCompleted ? 'Công việc đã hoàn thành 🎉' : 'Cập nhật trạng thái công việc',
-            message: `${req.user.fullName} vừa chuyển trạng thái công việc "${task.title}" sang: ${statusText}`,
-          });
+        await Promise.allSettled([
+          ...users.map((targetU) =>
+            notificationService.createNotification({
+              userId: targetU._id,
+              taskId: updated._id,
+              type: isCompleted ? 'completed' : 'status_changed',
+              title: isCompleted ? 'Công việc đã hoàn thành 🎉' : 'Cập nhật trạng thái công việc',
+              message: `${req.user.fullName} vừa chuyển trạng thái công việc "${updated.title}" sang: ${statusText}`,
+            })
+          ),
+          activityPromise,
+        ]);
+
+        users.forEach((targetU) => {
           if (targetU.email) {
-            await emailService.sendStatusUpdateEmail({
-              toEmail: targetU.email,
-              recipientName: targetU.fullName,
-              task,
-              updaterName: req.user.fullName,
-              newStatus: status,
-            });
+            runBackgroundTask(
+              () =>
+                emailService.sendStatusUpdateEmail({
+                  toEmail: targetU.email,
+                  recipientName: targetU.fullName,
+                  task: updated,
+                  updaterName: req.user.fullName,
+                  newStatus: status,
+                }),
+              'StatusUpdateEmail'
+            );
           }
-        }
+        });
+      } catch (notifErr) {
+        console.warn('[Status Notif Error]', notifErr.message);
+        await Promise.allSettled([activityPromise]);
       }
-    } catch (notifErr) {
-      console.warn('[Status Notif Error]', notifErr.message);
+    } else {
+      await Promise.allSettled([activityPromise]);
     }
-
-    await activityStore.logActivity({ taskId: id, userId, action: 'status_changed', details: { status } });
 
     return res.status(200).json({
       success: true,
@@ -342,7 +399,7 @@ exports.deleteTask = async (req, res) => {
     }
 
     // Chỉ Owner hoặc Admin mới có quyền xóa
-    const permission = await taskStore.checkPermission(id, userId);
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (permission !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -377,7 +434,7 @@ exports.assignTask = async (req, res) => {
     }
 
     // Chỉ Owner hoặc Editor mới có quyền giao việc
-    const permission = await taskStore.checkPermission(id, userId);
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -392,38 +449,48 @@ exports.assignTask = async (req, res) => {
 
     const updated = await taskStore.assignTask(id, { assigneeIds, primaryAssigneeId });
 
-    // Tự động thông báo và gửi email cho các thành viên được giao việc
+    // Tự động thông báo trong app song song với ghi nhận lịch sử và gửi email ở chế độ nền
     const updatedAssignees = updated.assigneeIds || updated.assignees || [];
-    if (updatedAssignees && updatedAssignees.length > 0) {
-      updatedAssignees.forEach(async (u) => {
-        const uId = String(u._id || u.id);
-        if (uId !== String(req.user._id)) {
-          const isPrimary = String(updated.primaryAssigneeId?._id || updated.primaryAssigneeId) === uId;
-          try {
-            await notificationService.createNotification({
-              userId: uId,
-              taskId: updated._id,
-              type: 'assigned',
-              title: isPrimary ? 'Bạn được đặt làm phụ trách chính ⭐' : 'Phân công công việc',
-              message: `${req.user.fullName} vừa phân công bạn thực hiện công việc: "${updated.title}"`,
-            });
-            if (u.email) {
-              await emailService.sendAssignEmail({
-                toEmail: u.email,
-                recipientName: u.fullName,
-                task: updated,
-                assignerName: req.user.fullName,
-                isPrimary,
-              });
-            }
-          } catch (notifErr) {
-            console.warn('[Assign Notif Error]', notifErr.message);
-          }
-        }
-      });
-    }
+    const targetUsers = Array.isArray(updatedAssignees)
+      ? updatedAssignees.filter((u) => String(u._id || u.id) !== String(req.user._id))
+      : [];
 
-    await activityStore.logActivity({ taskId: id, userId, action: 'assigned', details: { assigneesCount: assigneeIds.length, primaryAssigneeId } });
+    await Promise.allSettled([
+      ...targetUsers.map((u) => {
+        const uId = String(u._id || u.id);
+        const isPrimary = String(updated.primaryAssigneeId?._id || updated.primaryAssigneeId) === uId;
+        return notificationService.createNotification({
+          userId: uId,
+          taskId: updated._id,
+          type: 'assigned',
+          title: isPrimary ? 'Bạn được đặt làm phụ trách chính ⭐' : 'Phân công công việc',
+          message: `${req.user.fullName} vừa phân công bạn thực hiện công việc: "${updated.title}"`,
+        });
+      }),
+      activityStore.logActivity({
+        taskId: id,
+        userId,
+        action: 'assigned',
+        details: { assigneesCount: assigneeIds.length, primaryAssigneeId },
+      }),
+    ]);
+
+    targetUsers.forEach((u) => {
+      if (u.email) {
+        const isPrimary = String(updated.primaryAssigneeId?._id || updated.primaryAssigneeId) === String(u._id || u.id);
+        runBackgroundTask(
+          () =>
+            emailService.sendAssignEmail({
+              toEmail: u.email,
+              recipientName: u.fullName,
+              task: updated,
+              assignerName: req.user.fullName,
+              isPrimary,
+            }),
+          'AssignEmail'
+        );
+      }
+    });
 
     return res.status(200).json({
       success: true,
@@ -466,7 +533,7 @@ exports.shareTask = async (req, res) => {
     }
 
     // Chỉ Owner mới được chia sẻ hoặc sửa quyền
-    const userPermission = await taskStore.checkPermission(id, userId);
+    const userPermission = await taskStore.checkPermission(id, userId, task);
     if (userPermission !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -488,32 +555,46 @@ exports.shareTask = async (req, res) => {
       sharedBy: userId,
     });
 
-    // Gửi thông báo trong ứng dụng & email chia sẻ
+    const activityPromise = activityStore.logActivity({
+      taskId: id,
+      userId,
+      action: 'shared',
+      details: { targetUserId, permission },
+    });
+
+    // Gửi thông báo trong ứng dụng song song với ghi nhận lịch sử & gửi email ở chế độ nền
     try {
-      const targetUser = await userStore.findById(targetUserId);
+      const targetUser = share?.userId?.email ? share.userId : await userStore.findById(targetUserId);
+      const tasksToAwait = [activityPromise];
       if (targetUser) {
-        await notificationService.createNotification({
-          userId: targetUserId,
-          taskId: task._id,
-          type: 'shared',
-          title: `Được chia sẻ công việc (${permission === 'editor' ? 'Chỉnh sửa' : 'Chỉ xem'})`,
-          message: `${req.user.fullName} vừa chia sẻ công việc "${task.title}" với bạn`,
-        });
+        tasksToAwait.push(
+          notificationService.createNotification({
+            userId: targetUserId,
+            taskId: task._id,
+            type: 'shared',
+            title: `Được chia sẻ công việc (${permission === 'editor' ? 'Chỉnh sửa' : 'Chỉ xem'})`,
+            message: `${req.user.fullName} vừa chia sẻ công việc "${task.title}" với bạn`,
+          })
+        );
         if (targetUser.email) {
-          await emailService.sendShareEmail({
-            toEmail: targetUser.email,
-            recipientName: targetUser.fullName,
-            task,
-            sharerName: req.user.fullName,
-            permission,
-          });
+          runBackgroundTask(
+            () =>
+              emailService.sendShareEmail({
+                toEmail: targetUser.email,
+                recipientName: targetUser.fullName,
+                task,
+                sharerName: req.user.fullName,
+                permission,
+              }),
+            'ShareEmail'
+          );
         }
       }
+      await Promise.allSettled(tasksToAwait);
     } catch (notifErr) {
       console.warn('[Share Notif Error]', notifErr.message);
+      await Promise.allSettled([activityPromise]);
     }
-
-    await activityStore.logActivity({ taskId: id, userId, action: 'shared', details: { targetUserId, permission } });
 
     return res.status(200).json({
       success: true,
@@ -540,7 +621,7 @@ exports.revokeShare = async (req, res) => {
     }
 
     // Chỉ Owner hoặc Admin mới có quyền thu hồi chia sẻ
-    const userPermission = await taskStore.checkPermission(id, userId);
+    const userPermission = await taskStore.checkPermission(id, userId, task);
     if (userPermission !== 'owner' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -576,7 +657,7 @@ exports.getTaskShares = async (req, res) => {
     }
 
     // User phải có quyền truy cập công việc
-    const permission = await taskStore.checkPermission(id, userId);
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -611,7 +692,7 @@ exports.getTaskActivities = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
 
-    const permission = await taskStore.checkPermission(id, userId);
+    const permission = await taskStore.checkPermission(id, userId, task);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -642,7 +723,7 @@ exports.getTaskAssignees = async (req, res) => {
     if (!task) {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
-    const permission = await taskStore.checkPermission(id, req.user._id);
+    const permission = await taskStore.checkPermission(id, req.user._id, task);
     if (!permission && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền truy cập công việc này' });
     }
@@ -666,7 +747,7 @@ exports.setPrimaryAssignee = async (req, res) => {
     if (!task) {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
-    const permission = await taskStore.checkPermission(id, req.user._id);
+    const permission = await taskStore.checkPermission(id, req.user._id, task);
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền thay đổi người phụ trách chính' });
     }
@@ -692,7 +773,7 @@ exports.removeAssignee = async (req, res) => {
     if (!task) {
       return res.status(404).json({ success: false, message: 'Công việc không tồn tại' });
     }
-    const permission = await taskStore.checkPermission(id, req.user._id);
+    const permission = await taskStore.checkPermission(id, req.user._id, task);
     if (permission !== 'owner' && permission !== 'editor' && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền hủy giao việc' });
     }

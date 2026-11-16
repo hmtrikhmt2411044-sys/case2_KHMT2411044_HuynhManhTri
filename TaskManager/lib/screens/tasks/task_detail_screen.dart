@@ -154,26 +154,43 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
 
     if (confirmed == true && mounted) {
-      final success = await TaskService.deleteTask(widget.taskId);
-      if (mounted) {
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đã xóa công việc thành công!'), backgroundColor: Color(0xFF10B981)),
-          );
-          Navigator.pop(context, true);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Xóa công việc thất bại'), backgroundColor: Color(0xFFEF4444)),
-          );
+      try {
+        final success = await TaskService.deleteTask(widget.taskId);
+        if (mounted) {
+          if (success) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đã xóa công việc thành công!'), backgroundColor: Color(0xFF10B981)),
+            );
+            Navigator.pop(context, true);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Xóa công việc thất bại'), backgroundColor: Color(0xFFEF4444)),
+            );
+          }
         }
+      } on UnauthorizedException {
+        return;
+      } catch (e) {
+        _showErrorSnackBar(e, prefix: 'Không thể xóa công việc');
       }
     }
   }
 
   // Mở modal phân công lại việc
+  Future<List<User>?> _fetchSelectableUsers() async {
+    try {
+      return await UserService.searchUsers();
+    } on UnauthorizedException {
+      return null;
+    } catch (e) {
+      _showErrorSnackBar(e, prefix: 'Không thể tải danh sách thành viên');
+      return null;
+    }
+  }
+
   Future<void> _openAssignModal() async {
-    final allUsers = await UserService.searchUsers();
-    if (!mounted || _task == null) return;
+    final allUsers = await _fetchSelectableUsers();
+    if (allUsers == null || !mounted || _task == null) return;
 
     List<User> selectedUsers = List.from(_task!.assignees);
     User? primary = _task!.primaryAssignee;
@@ -235,10 +252,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             tooltip: 'Làm mới danh sách',
                             onPressed: () async {
                               setModalState(() => isRefreshing = true);
-                              final users = await UserService.searchUsers();
+                              final users = await _fetchSelectableUsers();
+                              if (!context.mounted) return;
                               setModalState(() {
-                                allUsers.clear();
-                                allUsers.addAll(users);
+                                if (users != null) {
+                                  allUsers.clear();
+                                  allUsers.addAll(users);
+                                }
                                 isRefreshing = false;
                               });
                             },
@@ -351,20 +371,35 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       onPressed: () async {
                         final messenger = ScaffoldMessenger.of(context);
                         Navigator.pop(ctx);
-                        final res = await TaskService.assignTask(
-                          _task!.id,
-                          assigneeIds: selectedUsers.map((u) => u.id).toList(),
-                          primaryAssigneeId: primary?.id,
-                        );
-                        if (!mounted) return;
-                        if (res != null) {
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Cập nhật phân công thành công!'),
-                              backgroundColor: Color(0xFF10B981),
-                            ),
+                        try {
+                          final res = await TaskService.assignTask(
+                            _task!.id,
+                            assigneeIds: selectedUsers.map((u) => u.id).toList(),
+                            primaryAssigneeId: primary?.id,
                           );
-                          _loadData();
+                          if (!mounted) return;
+                          if (res != null) {
+                            _hasModified = true;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Cập nhật phân công thành công!'),
+                                backgroundColor: Color(0xFF10B981),
+                              ),
+                            );
+                            _loadData();
+                          } else {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Cập nhật phân công thất bại'),
+                                backgroundColor: Color(0xFFEF4444),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } on UnauthorizedException {
+                          return;
+                        } catch (e) {
+                          _showErrorSnackBar(e);
                         }
                       },
                       child: const Text('Lưu phân công', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -382,8 +417,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   // Mở modal chia sẻ công việc (Viewer / Editor)
   Future<void> _openShareModal() async {
-    final allUsers = await UserService.searchUsers();
-    if (!mounted || _task == null) return;
+    final allUsers = await _fetchSelectableUsers();
+    if (allUsers == null || !mounted || _task == null) return;
 
     User? selectedUser;
     String selectedRole = 'viewer';
@@ -536,27 +571,35 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           : () async {
                               final messenger = ScaffoldMessenger.of(context);
                               Navigator.pop(ctx);
-                              final success = await TaskService.shareTask(
-                                _task!.id,
-                                targetUserId: selectedUser!.id,
-                                permission: selectedRole,
-                              );
-                              if (!mounted) return;
-                              if (success) {
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Đã chia sẻ công việc thành công!'),
-                                    backgroundColor: Color(0xFF10B981),
-                                  ),
+                              try {
+                                final success = await TaskService.shareTask(
+                                  _task!.id,
+                                  targetUserId: selectedUser!.id,
+                                  permission: selectedRole,
                                 );
-                                _loadData();
-                              } else {
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Không thể chia sẻ công việc này.'),
-                                    backgroundColor: Color(0xFFEF4444),
-                                  ),
-                                );
+                                if (!mounted) return;
+                                if (success) {
+                                  _hasModified = true;
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Đã chia sẻ công việc thành công!'),
+                                      backgroundColor: Color(0xFF10B981),
+                                    ),
+                                  );
+                                  _loadData();
+                                } else {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Không thể chia sẻ công việc này.'),
+                                      backgroundColor: Color(0xFFEF4444),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              } on UnauthorizedException {
+                                return;
+                              } catch (e) {
+                                _showErrorSnackBar(e);
                               }
                             },
                       child: const Text('Xác nhận chia sẻ', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -572,12 +615,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _revokeShare(String targetUserId) async {
-    final success = await TaskService.revokeShare(widget.taskId, targetUserId);
-    if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã thu hồi quyền chia sẻ'), backgroundColor: Color(0xFF10B981)),
-      );
-      _loadData();
+    try {
+      final success = await TaskService.revokeShare(widget.taskId, targetUserId);
+      if (!mounted) return;
+      if (success) {
+        _hasModified = true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã thu hồi quyền chia sẻ'), backgroundColor: Color(0xFF10B981)),
+        );
+        _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể thu hồi quyền chia sẻ'),
+            backgroundColor: Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on UnauthorizedException {
+      return;
+    } catch (e) {
+      _showErrorSnackBar(e);
     }
   }
 
@@ -1040,25 +1099,43 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   
+  void _showErrorSnackBar(Object error, {String prefix = 'Lỗi kết nối'}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$prefix: $error'),
+        backgroundColor: const Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _handleRetryEmail(String logId) async {
     final messenger = ScaffoldMessenger.of(context);
-    final success = await TaskService.retryEmail(logId);
-    if (!mounted) return;
-    if (success) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Đã gửi lại email thành công!'),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
-      _loadData();
-    } else {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Thử gửi lại email thất bại.'),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
+    try {
+      final success = await TaskService.retryEmail(logId);
+      if (!mounted) return;
+      if (success) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Đã gửi lại email thành công!'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        _loadData();
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Thử gửi lại email thất bại.'),
+            backgroundColor: Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on UnauthorizedException {
+      return;
+    } catch (e) {
+      _showErrorSnackBar(e);
     }
   }
 

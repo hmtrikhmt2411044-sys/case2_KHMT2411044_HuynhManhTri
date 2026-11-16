@@ -13,7 +13,13 @@ const createTransporter = () => {
       host,
       port,
       secure: port === 465,
-      auth: { user, pass },
+      auth: {
+        user: user.trim(),
+        pass: pass.replace(/\s+/g, ''),
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       tls: {
         rejectUnauthorized: false,
       },

@@ -24,12 +24,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
-    final user = await AuthService.getProfile();
-    if (!mounted) return;
-    setState(() {
-      _user = user;
-      _isLoading = false;
-    });
+    try {
+      final user = await AuthService.getProfile();
+      if (!mounted) return;
+      setState(() {
+        _user = user;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tải hồ sơ: $e'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   // 1. Hộp thoại Cập nhật thông tin cá nhân

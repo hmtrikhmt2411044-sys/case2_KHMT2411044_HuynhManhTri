@@ -4,7 +4,8 @@ import '../../services/statistics_service.dart';
 
 class StatisticsScreen extends StatefulWidget {
   final bool isTab;
-  const StatisticsScreen({super.key, this.isTab = false});
+  final int refreshTick;
+  const StatisticsScreen({super.key, this.isTab = false, this.refreshTick = 0});
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
@@ -18,6 +19,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   void initState() {
     super.initState();
     _fetchStatistics();
+  }
+
+  @override
+  void didUpdateWidget(covariant StatisticsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      _fetchStatistics();
+    }
   }
 
   Future<void> _fetchStatistics() async {

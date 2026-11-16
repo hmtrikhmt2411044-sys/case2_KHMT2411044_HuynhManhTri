@@ -74,6 +74,7 @@ module.exports = {
   async findById(id) {
     const idStr = String(id);
     if (isMongooseConnected()) {
+      if (!mongoose.Types.ObjectId.isValid(idStr)) return null;
       return await User.findById(idStr);
     }
     const users = readLocalUsers();
@@ -120,7 +121,8 @@ module.exports = {
   async updateProfile(id, updates) {
     const idStr = String(id);
     if (isMongooseConnected()) {
-      return await User.findByIdAndUpdate(idStr, updates, { new: true, runValidators: true });
+      if (!mongoose.Types.ObjectId.isValid(idStr)) return null;
+      return await User.findByIdAndUpdate(idStr, updates, { returnDocument: 'after', runValidators: true });
     }
     const users = readLocalUsers();
     const idx = users.findIndex((u) => String(u._id) === idStr);

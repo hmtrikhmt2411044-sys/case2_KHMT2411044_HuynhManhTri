@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/app_notification.dart';
+import '../../services/api_client.dart';
 import '../../services/notification_service.dart';
 import '../tasks/task_detail_screen.dart';
 
@@ -45,29 +46,65 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _handleMarkAllAsRead() async {
     final messenger = ScaffoldMessenger.of(context);
-    final success = await NotificationService.markAllAsRead();
-    if (!mounted) return;
-    if (success) {
+    try {
+      final success = await NotificationService.markAllAsRead();
+      if (!mounted) return;
+      if (success) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Đã đánh dấu tất cả thông báo là đã đọc'),
+            backgroundColor: Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _fetchNotifications();
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Không thể đánh dấu tất cả thông báo là đã đọc'),
+            backgroundColor: Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on UnauthorizedException {
+      return;
+    } catch (e) {
+      if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Đã đánh dấu tất cả thông báo là đã đọc'),
-          backgroundColor: Color(0xFF10B981),
+        SnackBar(
+          content: Text('Lỗi kết nối: $e'),
+          backgroundColor: const Color(0xFFEF4444),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      _fetchNotifications();
     }
   }
 
   Future<void> _handleTapNotification(AppNotification notif) async {
     // Đánh dấu đã đọc nếu chưa đọc
     if (!notif.isRead) {
-      await NotificationService.markAsRead(notif.id);
-      if (mounted) {
-        setState(() {
-          notif.isRead = true;
-          if (_unreadCount > 0) _unreadCount--;
-        });
+      try {
+        final ok = await NotificationService.markAsRead(notif.id);
+        if (ok && mounted) {
+          setState(() {
+            notif.isRead = true;
+            if (_unreadCount > 0) _unreadCount--;
+          });
+        }
+      } on UnauthorizedException {
+        return;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi kết nối: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
       }
     }
 

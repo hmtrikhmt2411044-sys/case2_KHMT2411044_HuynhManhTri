@@ -53,9 +53,10 @@ class _LoginScreenState extends State<LoginScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+        (route) => false,
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
