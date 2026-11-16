@@ -30,33 +30,30 @@ exports.getTaskStatistics = async (req, res) => {
   }
 };
 
+// Helper tính số liệu phân công vai trò
+const computeAssignmentStats = (tasks, userId) => {
+  const uid = String(userId);
+  const createdCount = tasks.filter((t) => String(t.createdBy?._id || t.createdBy) === uid).length;
+  const assignedCount = tasks.filter((t) => {
+    const list = Array.isArray(t.assigneeIds) ? t.assigneeIds : t.assignees;
+    return Array.isArray(list) && list.some((a) => String(a._id || a.id || a) === uid);
+  }).length;
+  const primaryCount = tasks.filter((t) => {
+    const pId = String(t.primaryAssignee?._id || t.primaryAssignee?.id || t.primaryAssigneeId?._id || t.primaryAssigneeId || '');
+    return pId === uid;
+  }).length;
+  return { createdCount, assignedCount, primaryCount };
+};
+
 // 2. Thống kê theo phân công vai trò
 exports.getAssignmentStatistics = async (req, res) => {
   try {
     const userId = String(req.user._id);
     const tasks = await taskStore.getTasks({ userId, type: 'all' });
 
-    const createdCount = tasks.filter((t) => String(t.createdBy?._id || t.createdBy) === userId).length;
-
-    const assignedCount = tasks.filter((t) => {
-      if (Array.isArray(t.assignees)) {
-        return t.assignees.some((a) => String(a._id || a.id) === userId);
-      }
-      return false;
-    }).length;
-
-    const primaryCount = tasks.filter((t) => {
-      const pId = String(t.primaryAssignee?._id || t.primaryAssignee?.id || t.primaryAssigneeId?._id || t.primaryAssigneeId || '');
-      return pId === userId;
-    }).length;
-
     return res.status(200).json({
       success: true,
-      data: {
-        createdCount,
-        assignedCount,
-        primaryCount,
-      },
+      data: computeAssignmentStats(tasks, userId),
     });
   } catch (error) {
     return res.status(500).json({
@@ -120,17 +117,7 @@ exports.getOverview = async (req, res) => {
     const completed = tasks.filter((t) => t.status === 'completed').length;
     const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    const createdCount = tasks.filter((t) => String(t.createdBy?._id || t.createdBy) === userId).length;
-    const assignedCount = tasks.filter((t) => {
-      if (Array.isArray(t.assignees)) {
-        return t.assignees.some((a) => String(a._id || a.id) === userId);
-      }
-      return false;
-    }).length;
-    const primaryCount = tasks.filter((t) => {
-      const pId = String(t.primaryAssignee?._id || t.primaryAssignee?.id || t.primaryAssigneeId?._id || t.primaryAssigneeId || '');
-      return pId === userId;
-    }).length;
+    const assignmentStats = computeAssignmentStats(tasks, userId);
 
     let overdueCount = 0;
     let dueSoonCount = 0;
@@ -155,11 +142,7 @@ exports.getOverview = async (req, res) => {
           completed,
           completionRate,
         },
-        assignmentStats: {
-          createdCount,
-          assignedCount,
-          primaryCount,
-        },
+        assignmentStats,
         deadlineStats: {
           overdueCount,
           dueSoonCount,

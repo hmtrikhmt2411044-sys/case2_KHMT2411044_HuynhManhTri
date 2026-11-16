@@ -4,7 +4,7 @@ const userStore = require('../services/userStore');
 
 const generateToken = (userId) => {
   const secret = process.env.JWT_SECRET || 'default_jwt_secret_case2_taskmanager_KHMT2411044';
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '30d';
   return jwt.sign({ id: String(userId) }, secret, { expiresIn });
 };
 

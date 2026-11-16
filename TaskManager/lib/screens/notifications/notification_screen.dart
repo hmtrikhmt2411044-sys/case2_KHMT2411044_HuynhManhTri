@@ -24,16 +24,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _fetchNotifications() async {
     setState(() => _isLoading = true);
-    final isReadFilter = _selectedFilter == 'unread' ? false : null;
-    final results = await NotificationService.getNotifications(isRead: isReadFilter);
-    final count = await NotificationService.getUnreadCount();
-
-    if (mounted) {
-      setState(() {
-        _notifications = results;
-        _unreadCount = count;
-        _isLoading = false;
-      });
+    List<AppNotification> results = [];
+    int count = 0;
+    try {
+      final isReadFilter = _selectedFilter == 'unread' ? false : null;
+      results = await NotificationService.getNotifications(isRead: isReadFilter);
+      count = await NotificationService.getUnreadCount();
+    } catch (_) {
+      // Lỗi mạng hoặc 401 đã được xử lý ở ApiClient
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notifications = results;
+          _unreadCount = count;
+          _isLoading = false;
+        });
+      }
     }
   }
 

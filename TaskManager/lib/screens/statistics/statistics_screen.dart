@@ -22,12 +22,18 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Future<void> _fetchStatistics() async {
     setState(() => _isLoading = true);
-    final data = await StatisticsService.getOverview();
-    if (mounted) {
-      setState(() {
-        _stats = data;
-        _isLoading = false;
-      });
+    OverviewStats? data;
+    try {
+      data = await StatisticsService.getOverview();
+    } catch (_) {
+      data = null;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _stats = data;
+          _isLoading = false;
+        });
+      }
     }
   }
 

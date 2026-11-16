@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/task.dart';
 import '../../models/user.dart';
+import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_service.dart';
 import '../profile/profile_screen.dart';
@@ -58,6 +59,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
       if (mounted) setState(() => _currentUser = user);
       await _loadUnreadNotifications();
       await _fetchTasks();
+    } on UnauthorizedException {
+      // ApiClient tự động chuyển về màn hình đăng nhập
     } catch (_) {
       if (mounted) setState(() => _hasConnectionError = true);
     } finally {
@@ -89,6 +92,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
           _loadUnreadNotifications();
         });
       }
+    } on UnauthorizedException {
+      // ApiClient tự động chuyển về màn hình đăng nhập
     } catch (_) {
       if (mounted) setState(() => _hasConnectionError = true);
     } finally {

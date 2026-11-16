@@ -40,12 +40,15 @@ class _TaskCreateScreenState extends State<TaskCreateScreen> {
   }
 
   Future<void> _loadUsers() async {
-    final users = await UserService.searchUsers();
-    if (mounted) {
-      setState(() {
-        _availableUsers = users;
-        _isLoadingUsers = false;
-      });
+    try {
+      final users = await UserService.searchUsers();
+      if (mounted) {
+        setState(() => _availableUsers = users);
+      }
+    } catch (_) {
+      // Lỗi mạng hoặc hết hạn phiên đăng nhập
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
     }
   }
 

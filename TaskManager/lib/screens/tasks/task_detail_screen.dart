@@ -33,24 +33,25 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final detail = await TaskService.getTaskDetail(widget.taskId);
-    final shares = await TaskService.getTaskShares(widget.taskId);
-    final emailLogs = await TaskService.getEmailLogs(widget.taskId);
-    final activities = await TaskService.getTaskActivities(widget.taskId);
+    try {
+      final detail = await TaskService.getTaskDetail(widget.taskId);
+      final shares = await TaskService.getTaskShares(widget.taskId);
+      final emailLogs = await TaskService.getEmailLogs(widget.taskId);
+      final activities = await TaskService.getTaskActivities(widget.taskId);
 
-    if (mounted) {
-      if (detail != null) {
+      if (mounted && detail != null) {
         setState(() {
           _task = detail['task'] as TaskModel;
           _permission = detail['permission'] as String;
           _shares = shares;
           _emailLogs = emailLogs;
           _activities = activities;
-          _isLoading = false;
         });
-      } else {
-        setState(() => _isLoading = false);
       }
+    } catch (_) {
+      // Lỗi mạng hoặc hết hạn phiên đăng nhập
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

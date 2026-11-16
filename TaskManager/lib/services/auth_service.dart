@@ -21,6 +21,7 @@ class AuthService {
       final data = jsonDecode(response.body);
       if (response.statusCode == 201 && data['success'] == true) {
         // Lưu token và thông tin user
+        ApiClient.resetSessionGuard();
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(AppConstants.keyToken, data['data']['token']);
         await prefs.setString(
@@ -49,6 +50,7 @@ class AuthService {
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
+        ApiClient.resetSessionGuard();
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(AppConstants.keyToken, data['data']['token']);
         await prefs.setString(
@@ -146,11 +148,33 @@ class AuthService {
     }
   }
 
+  // Kiểm tra JWT có hết hạn hay chưa
+  static bool isTokenExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+      final normalized = base64Url.normalize(parts[1]);
+      final payload = jsonDecode(utf8.decode(base64Url.decode(normalized)));
+      if (payload is! Map<String, dynamic> || payload['exp'] is! num) {
+        return true;
+      }
+      final expMs = (payload['exp'] as num).toInt() * 1000;
+      return DateTime.now().millisecondsSinceEpoch >= expMs;
+    } catch (_) {
+      return true;
+    }
+  }
+
   // Tiện ích kiểm tra đăng nhập
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(AppConstants.keyToken);
-    return token != null && token.isNotEmpty;
+    if (token == null || token.isEmpty) return false;
+    if (isTokenExpired(token)) {
+      await logout();
+      return false;
+    }
+    return true;
   }
 
   static Future<User?> getLocalUser() async {

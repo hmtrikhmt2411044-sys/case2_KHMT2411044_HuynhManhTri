@@ -1,10 +1,28 @@
 import 'package:flutter/material.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
+import 'services/api_client.dart';
 import 'services/auth_service.dart';
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  ApiClient.onUnauthorized = () {
+    rootNavigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+    rootScaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: const Text('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại'),
+        backgroundColor: const Color(0xFFD97706),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  };
   runApp(const MyApp());
 }
 
@@ -14,6 +32,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       title: 'Task Manager',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
